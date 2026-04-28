@@ -2,9 +2,7 @@ import makeWASocket, {
   DisconnectReason,
   useMultiFileAuthState,
   WASocket,
-  BaileysEventMap,
-  proto,
-  downloadMediaMessage,
+  fetchLatestWaWebVersion,
 } from '@whiskeysockets/baileys'
 import { Boom } from '@hapi/boom'
 import path from 'path'
@@ -23,11 +21,14 @@ type QRCallback = (sessionId: string, qr: string) => void
 type StatusCallback = (sessionId: string, status: SessionInfo['status'], phone?: string) => void
 
 const SESSIONS_DIR = process.env.SESSIONS_DIR || '/app/data/sessions'
+const MAX_RETRIES = 5
 
 class BaileysService {
   private sockets: Map<string, WASocket> = new Map()
   private qrCallbacks: Set<QRCallback> = new Set()
   private statusCallbacks: Set<StatusCallback> = new Set()
+  private qrCache: Map<string, string> = new Map()
+  private retryCount: Map<string, number> = new Map()
 
   onQR(cb: QRCallback) {
     this.qrCallbacks.add(cb)
@@ -40,7 +41,12 @@ class BaileysService {
   }
 
   private emitQR(sessionId: string, qr: string) {
+    this.qrCache.set(sessionId, qr)
     this.qrCallbacks.forEach((cb) => cb(sessionId, qr))
+  }
+
+  getQR(sessionId: string): string | null {
+    return this.qrCache.get(sessionId) ?? null
   }
 
   private emitStatus(sessionId: string, status: SessionInfo['status'], phone?: string) {
@@ -73,13 +79,25 @@ class BaileysService {
     await query('UPDATE whatsapp_sessions SET status = ? WHERE id = ?', ['connecting', sessionId])
     this.emitStatus(sessionId, 'connecting')
 
+    let waVersion: [number, number, number] = [2, 3000, 1023223821]
+    try {
+      const { version } = await fetchLatestWaWebVersion({})
+      waVersion = version
+    } catch {
+      logger.warn({ sessionId }, 'Falha ao buscar versão WA, usando padrão')
+    }
+
     const sock = makeWASocket({
       auth: state,
+      version: waVersion,
       printQRInTerminal: false,
       logger: logger.child({ module: 'baileys', sessionId }) as never,
-      browser: ['Disparo WA', 'Chrome', '110.0'],
+      browser: ['Ubuntu', 'Chrome', '121.0.0'],
       connectTimeoutMs: 60000,
-      keepAliveIntervalMs: 15000,
+      keepAliveIntervalMs: 30000,
+      retryRequestDelayMs: 2000,
+      maxMsgRetryCount: 3,
+      qrTimeout: 60000,
     })
 
     this.sockets.set(sessionId, sock)
@@ -97,6 +115,8 @@ class BaileysService {
 
       if (connection === 'open') {
         const phone = sock.user?.id?.split(':')[0] ?? null
+        this.retryCount.delete(sessionId)
+        this.qrCache.delete(sessionId)
         await query('UPDATE whatsapp_sessions SET status = ?, phone = ? WHERE id = ?', [
           'connected',
           phone,
@@ -118,19 +138,29 @@ class BaileysService {
           this.emitStatus(sessionId, 'banned')
           logger.warn({ sessionId, reason }, 'Sessão banida/deslogada')
         } else {
+          const retries = (this.retryCount.get(sessionId) ?? 0) + 1
+          this.retryCount.set(sessionId, retries)
+          const delay = Math.min(retries * 5000, 30000)
           await query('UPDATE whatsapp_sessions SET status = ? WHERE id = ?', [
             'disconnected',
             sessionId,
           ])
           this.emitStatus(sessionId, 'disconnected')
-          logger.info({ sessionId, reason }, 'Sessão desconectada, reconectando em 5s...')
-          setTimeout(() => this.connect(sessionId), 5000)
+          logger.info({ sessionId, reason, retries, delay }, 'Sessão desconectada, reconectando...')
+          if (retries <= MAX_RETRIES) {
+            setTimeout(() => this.connect(sessionId), delay)
+          } else {
+            logger.warn({ sessionId }, 'Máximo de tentativas atingido, aguardando reconexão manual')
+            this.retryCount.delete(sessionId)
+          }
         }
       }
     })
   }
 
   async disconnect(sessionId: string) {
+    this.retryCount.delete(sessionId)
+    this.qrCache.delete(sessionId)
     const sock = this.sockets.get(sessionId)
     if (sock) {
       await sock.logout().catch(() => null)

@@ -27,6 +27,26 @@ export default function WhatsAppPage() {
     return () => wsRef.current?.close()
   }, [])
 
+  useEffect(() => {
+    const pendingSessions = sessions.filter(
+      (s) => (s.status === 'connecting' || s.status === 'disconnected') && !qrMap[s.id],
+    )
+    if (pendingSessions.length === 0) return
+    const interval = setInterval(async () => {
+      for (const s of pendingSessions) {
+        try {
+          const res = await api.get(`/whatsapp/sessions/${s.id}/qr`)
+          if (res.data?.qr) {
+            setQrMap((prev) => ({ ...prev, [s.id]: res.data.qr }))
+          }
+        } catch {
+          // QR ainda não disponível
+        }
+      }
+    }, 3000)
+    return () => clearInterval(interval)
+  }, [sessions, qrMap])
+
   const connectWS = () => {
     const token = localStorage.getItem('disparo_token')
     const ws = new WebSocket(`${WS_URL}?token=${token}`)

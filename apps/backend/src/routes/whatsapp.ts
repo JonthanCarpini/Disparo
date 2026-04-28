@@ -52,6 +52,15 @@ export async function whatsappRoutes(app: FastifyInstance) {
     return { message: 'Reconectando...' }
   })
 
+  app.get('/whatsapp/sessions/:id/qr', {
+    preHandler: [app.authenticate],
+  }, async (req, reply) => {
+    const { id } = req.params as { id: string }
+    const qr = baileysService.getQR(id)
+    if (!qr) return reply.status(404).send({ error: 'QR não disponível. Aguarde ou reconecte.' })
+    return { qr }
+  })
+
   app.get('/whatsapp/sessions/:id/groups', {
     preHandler: [app.authenticate],
   }, async (req, reply) => {
