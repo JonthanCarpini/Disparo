@@ -27,9 +27,12 @@ declare module 'fastify' {
 }
 
 async function bootstrap() {
+  const corsOrigin = process.env.CORS_ORIGIN || '*'
   await app.register(cors, {
-    origin: process.env.CORS_ORIGIN || '*',
+    origin: corsOrigin === '*' ? true : corsOrigin,
     credentials: true,
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization'],
   })
 
   await app.register(jwt, {
