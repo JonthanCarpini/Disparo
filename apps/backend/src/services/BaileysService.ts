@@ -246,19 +246,34 @@ class BaileysService {
     if (!sock) throw new Error(`Sessão ${sessionId} não conectada`)
     const meta = await sock.groupMetadata(groupId)
     logger.info({ sessionId, groupId, total: meta.participants.length, sample: meta.participants.slice(0, 3).map(p => ({ id: p.id })) }, 'getGroupParticipants raw')
-    return meta.participants
-      .filter((p) => {
-        const jid = String(p.id || '')
-        return jid.includes('@s.whatsapp.net') || (!jid.includes('@g.us') && jid.length > 5)
-      })
-      .map((p) => {
-        const jid = String(p.id || '')
-        const rawPhone = jid.split('@')[0]
-        const phone = rawPhone.split(':')[0]
-        const name = (p as { pushName?: string; notify?: string }).pushName || (p as { notify?: string }).notify || phone
-        return { phone, name }
-      })
-      .filter((c) => c.phone && /^\d{10,15}$/.test(c.phone))
+
+    const result: { phone: string; name: string }[] = []
+
+    for (const p of meta.participants) {
+      const jid = String(p.id || '')
+      const pAny = p as unknown as Record<string, unknown>
+
+      if (jid.endsWith('@s.whatsapp.net')) {
+        const rawPhone = jid.split('@')[0].split(':')[0]
+        if (/^\d{8,15}$/.test(rawPhone)) {
+          const name = String(pAny.pushName || pAny.notify || pAny.name || rawPhone)
+          result.push({ phone: rawPhone, name })
+        }
+        continue
+      }
+
+      if (jid.endsWith('@lid')) {
+        const phoneNum = String(pAny.phoneNumber || pAny.phone || '')
+        const rawPhone = phoneNum.replace(/\D/g, '').replace(/^0+/, '')
+        if (rawPhone && /^\d{8,15}$/.test(rawPhone)) {
+          const name = String(pAny.pushName || pAny.notify || pAny.name || rawPhone)
+          result.push({ phone: rawPhone, name })
+        }
+      }
+    }
+
+    logger.info({ sessionId, groupId, extracted: result.length, lids: meta.participants.filter(p => String(p.id).endsWith('@lid')).length }, 'getGroupParticipants extracted')
+    return result
   }
 
   async getContacts(sessionId: string): Promise<{ phone: string; name: string }[]> {
