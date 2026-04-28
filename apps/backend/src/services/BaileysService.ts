@@ -54,6 +54,20 @@ class BaileysService {
     return this.lidToPhone.get(sessionId)?.size ?? 0
   }
 
+  async forceResync(sessionId: string): Promise<{ success: boolean; lidMapSize: number; error?: string }> {
+    const sock = this.sockets.get(sessionId)
+    if (!sock) return { success: false, lidMapSize: 0, error: 'Sessão não conectada' }
+    try {
+      const sockAny = sock as unknown as { resyncAppState?: (collections: string[], isInitialSync: boolean) => Promise<void> }
+      if (!sockAny.resyncAppState) return { success: false, lidMapSize: 0, error: 'resyncAppState não disponível' }
+      await sockAny.resyncAppState(['critical_block', 'critical_unblock_low', 'regular_high', 'regular_low', 'regular'], true)
+      const lidMapSize = this.lidToPhone.get(sessionId)?.size ?? 0
+      return { success: true, lidMapSize }
+    } catch (err) {
+      return { success: false, lidMapSize: this.lidToPhone.get(sessionId)?.size ?? 0, error: String(err) }
+    }
+  }
+
   private emitStatus(sessionId: string, status: SessionInfo['status'], phone?: string) {
     this.statusCallbacks.forEach((cb) => cb(sessionId, status, phone))
   }
@@ -278,6 +292,19 @@ class BaileysService {
         ])
         this.emitStatus(sessionId, 'connected', phone ?? undefined)
         logger.info({ sessionId, phone }, 'WhatsApp conectado')
+
+        setTimeout(async () => {
+          try {
+            const sockAny = sock as unknown as { resyncAppState?: (collections: string[], isInitialSync: boolean) => Promise<void> }
+            if (sockAny.resyncAppState) {
+              logger.info({ sessionId }, 'Forçando resync de contatos via resyncAppState')
+              await sockAny.resyncAppState(['critical_block', 'critical_unblock_low', 'regular_high', 'regular_low', 'regular'], true)
+              logger.info({ sessionId, lidMapSize: lidMap.size }, 'resyncAppState concluído')
+            }
+          } catch (err) {
+            logger.warn({ sessionId, err: String(err) }, 'Falha no resyncAppState')
+          }
+        }, 3000)
       }
 
       if (connection === 'close') {
