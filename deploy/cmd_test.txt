@@ -1,0 +1,1 @@
+echo SSH_OK && uname -a
