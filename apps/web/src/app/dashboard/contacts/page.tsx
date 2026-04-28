@@ -74,10 +74,18 @@ export default function ContactsPage() {
     toast.success('Lista removida')
   }
 
-  const handleExportCSV = (id: string) => {
-    const token = localStorage.getItem('disparo_token')
-    const apiBase = process.env.NEXT_PUBLIC_API_URL || ''
-    window.open(`${apiBase}/api/contacts/lists/${id}/export?token=${token}`, '_blank')
+  const handleExportCSV = async (id: string, name: string) => {
+    try {
+      const res = await api.get(`/contacts/lists/${id}/export`, { responseType: 'blob' })
+      const url = URL.createObjectURL(new Blob([res.data], { type: 'text/csv' }))
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `${name.replace(/\s+/g, '_')}.csv`
+      a.click()
+      URL.revokeObjectURL(url)
+    } catch {
+      toast.error('Erro ao exportar lista')
+    }
   }
 
   const openGroupExtract = async () => {
@@ -185,7 +193,7 @@ export default function ContactsPage() {
             </p>
             <div className="flex gap-2 pt-4 border-t border-border">
               <button
-                onClick={() => handleExportCSV(l.id)}
+                onClick={() => handleExportCSV(l.id, l.name)}
                 className="flex-1 flex items-center justify-center gap-2 py-2 text-sm text-muted-foreground hover:text-foreground hover:bg-muted rounded-xl transition-colors"
               >
                 <Download className="w-3.5 h-3.5" /> Exportar
