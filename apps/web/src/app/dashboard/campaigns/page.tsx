@@ -1,0 +1,315 @@
+'use client'
+
+import { useEffect, useRef, useState } from 'react'
+import {
+  Send, Plus, Pause, Play, Trash2, Loader2,
+  CheckCircle, XCircle, Clock, Upload,
+} from 'lucide-react'
+import { toast } from 'sonner'
+import { api } from '@/lib/api'
+
+interface Campaign {
+  id: string
+  name: string
+  status: 'draft' | 'scheduled' | 'running' | 'paused' | 'completed' | 'failed'
+  sent: number
+  failed: number
+  total: number
+  ai_provider: string
+  created_at: string
+  list_name?: string
+}
+
+interface Session { id: string; name: string; status: string }
+interface ContactList { id: string; name: string; total: number }
+interface AIConfig { provider: string; enabled: number }
+
+export default function CampaignsPage() {
+  const [campaigns, setCampaigns] = useState<Campaign[]>([])
+  const [sessions, setSessions] = useState<Session[]>([])
+  const [lists, setLists] = useState<ContactList[]>([])
+  const [aiConfigs, setAiConfigs] = useState<AIConfig[]>([])
+  const [showForm, setShowForm] = useState(false)
+  const [submitting, setSubmitting] = useState(false)
+  const mediaRef = useRef<HTMLInputElement>(null)
+
+  const [form, setForm] = useState({
+    name: '', list_id: '', ai_provider: 'openai', ai_model: '',
+    prompt: '', media_type: 'none', min_delay: '5', max_delay: '15',
+    rotate_sessions: true, session_ids: [] as string[],
+  })
+
+  useEffect(() => {
+    loadAll()
+    connectWS()
+  }, [])
+
+  const connectWS = () => {
+    const token = localStorage.getItem('disparo_token')
+    const wsBase = (process.env.NEXT_PUBLIC_WS_URL || 'ws://localhost:3333')
+    const ws = new WebSocket(`${wsBase}/api/campaigns/ws?token=${token}`)
+    ws.onmessage = (e) => {
+      const msg = JSON.parse(e.data)
+      if (msg.event === 'update' || msg.event === 'progress') {
+        setCampaigns((prev) =>
+          prev.map((c) =>
+            c.id === msg.campaignId
+              ? { ...c, status: msg.status || c.status, sent: msg.sent ?? c.sent, failed: msg.failed ?? c.failed }
+              : c,
+          ),
+        )
+      }
+    }
+    ws.onclose = () => setTimeout(connectWS, 3000)
+  }
+
+  const loadAll = async () => {
+    const [c, s, l, a] = await Promise.all([
+      api.get('/campaigns'),
+      api.get('/whatsapp/sessions'),
+      api.get('/contacts/lists'),
+      api.get('/ai/configs'),
+    ])
+    setCampaigns(c.data)
+    setSessions(s.data)
+    setLists(l.data)
+    setAiConfigs(a.data.filter((x: AIConfig) => x.enabled))
+  }
+
+  const toggleSession = (id: string) => {
+    setForm((prev) => ({
+      ...prev,
+      session_ids: prev.session_ids.includes(id)
+        ? prev.session_ids.filter((s) => s !== id)
+        : [...prev.session_ids, id],
+    }))
+  }
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!form.name || !form.list_id || !form.ai_provider || !form.prompt) {
+      return toast.error('Preencha todos os campos obrigatórios')
+    }
+    if (form.session_ids.length === 0) return toast.error('Selecione pelo menos um número WhatsApp')
+    setSubmitting(true)
+
+    const fd = new FormData()
+    Object.entries(form).forEach(([k, v]) => {
+      if (k === 'session_ids') fd.append(k, JSON.stringify(v))
+      else if (k === 'rotate_sessions') fd.append(k, v ? 'true' : 'false')
+      else fd.append(k, String(v))
+    })
+
+    const media = mediaRef.current?.files?.[0]
+    if (media) fd.append('media', media)
+
+    try {
+      await api.post('/campaigns', fd, { headers: { 'Content-Type': 'multipart/form-data' } })
+      toast.success('Campanha iniciada!')
+      setShowForm(false)
+      setForm({ name: '', list_id: '', ai_provider: 'openai', ai_model: '', prompt: '', media_type: 'none', min_delay: '5', max_delay: '15', rotate_sessions: true, session_ids: [] })
+      loadAll()
+    } catch {
+      toast.error('Erro ao criar campanha')
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  const pauseCampaign = async (id: string) => {
+    await api.post(`/campaigns/${id}/pause`)
+    setCampaigns((prev) => prev.map((c) => c.id === id ? { ...c, status: 'paused' } : c))
+    toast.info('Campanha pausada')
+  }
+
+  const resumeCampaign = async (id: string) => {
+    await api.post(`/campaigns/${id}/resume`)
+    setCampaigns((prev) => prev.map((c) => c.id === id ? { ...c, status: 'running' } : c))
+    toast.info('Campanha retomada')
+  }
+
+  const deleteCampaign = async (id: string) => {
+    if (!confirm('Remover esta campanha?')) return
+    await api.delete(`/campaigns/${id}`)
+    setCampaigns((prev) => prev.filter((c) => c.id !== id))
+    toast.success('Campanha removida')
+  }
+
+  const statusMap: Record<string, { label: string; class: string }> = {
+    draft: { label: 'Rascunho', class: 'bg-muted text-muted-foreground' },
+    scheduled: { label: 'Agendado', class: 'bg-blue-500/20 text-blue-400' },
+    running: { label: 'Enviando', class: 'bg-yellow-500/20 text-yellow-400' },
+    paused: { label: 'Pausado', class: 'bg-orange-500/20 text-orange-400' },
+    completed: { label: 'Concluído', class: 'bg-primary/20 text-primary' },
+    failed: { label: 'Falhou', class: 'bg-destructive/20 text-destructive' },
+  }
+
+  const connectedSessions = sessions.filter((s) => s.status === 'connected')
+
+  return (
+    <div className="p-8">
+      <div className="flex items-center justify-between mb-8">
+        <div>
+          <h2 className="text-2xl font-bold text-foreground">Campanhas</h2>
+          <p className="text-muted-foreground mt-1">Crie e gerencie disparos em massa com IA</p>
+        </div>
+        <button
+          onClick={() => setShowForm(true)}
+          className="flex items-center gap-2 px-5 py-2.5 bg-primary text-primary-foreground rounded-xl font-medium hover:bg-primary/90 transition-colors"
+        >
+          <Plus className="w-4 h-4" /> Nova Campanha
+        </button>
+      </div>
+
+      <div className="space-y-4">
+        {campaigns.map((c) => {
+          const pct = c.total > 0 ? Math.round((c.sent / c.total) * 100) : 0
+          const s = statusMap[c.status] || statusMap.draft
+          return (
+            <div key={c.id} className="bg-card border border-border rounded-2xl p-5">
+              <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
+                <div>
+                  <div className="flex items-center gap-2 mb-1">
+                    <h3 className="font-semibold text-foreground">{c.name}</h3>
+                    <span className={`text-xs px-2 py-0.5 rounded-full ${s.class}`}>{s.label}</span>
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    {c.list_name} • {c.ai_provider.toUpperCase()} • {new Date(c.created_at).toLocaleDateString('pt-BR')}
+                  </p>
+                </div>
+                <div className="flex gap-2">
+                  {c.status === 'running' && (
+                    <button onClick={() => pauseCampaign(c.id)} className="flex items-center gap-1.5 px-3 py-1.5 text-sm bg-orange-500/10 text-orange-400 rounded-xl hover:bg-orange-500/20 transition-colors">
+                      <Pause className="w-3.5 h-3.5" /> Pausar
+                    </button>
+                  )}
+                  {c.status === 'paused' && (
+                    <button onClick={() => resumeCampaign(c.id)} className="flex items-center gap-1.5 px-3 py-1.5 text-sm bg-primary/10 text-primary rounded-xl hover:bg-primary/20 transition-colors">
+                      <Play className="w-3.5 h-3.5" /> Retomar
+                    </button>
+                  )}
+                  <button onClick={() => deleteCampaign(c.id)} className="flex items-center gap-1.5 px-3 py-1.5 text-sm bg-destructive/10 text-destructive rounded-xl hover:bg-destructive/20 transition-colors">
+                    <Trash2 className="w-3.5 h-3.5" /> Remover
+                  </button>
+                </div>
+              </div>
+              <div className="flex items-center gap-6 text-sm text-muted-foreground mb-3">
+                <span className="flex items-center gap-1.5"><CheckCircle className="w-4 h-4 text-primary" />{c.sent} enviados</span>
+                <span className="flex items-center gap-1.5"><XCircle className="w-4 h-4 text-destructive" />{c.failed} falhas</span>
+                <span className="flex items-center gap-1.5"><Clock className="w-4 h-4" />{c.total} total</span>
+                <span className="ml-auto font-semibold text-foreground">{pct}%</span>
+              </div>
+              <div className="h-2 bg-muted rounded-full overflow-hidden">
+                <div className="h-full bg-primary rounded-full transition-all duration-500" style={{ width: `${pct}%` }} />
+              </div>
+            </div>
+          )
+        })}
+        {campaigns.length === 0 && (
+          <div className="text-center py-16 text-muted-foreground">
+            <Send className="w-12 h-12 mx-auto mb-3 opacity-30" />
+            <p>Nenhuma campanha criada. Clique em "Nova Campanha" para começar.</p>
+          </div>
+        )}
+      </div>
+
+      {showForm && (
+        <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4 overflow-y-auto">
+          <div className="bg-card border border-border rounded-2xl p-6 w-full max-w-2xl my-4">
+            <h3 className="text-xl font-semibold mb-6">Nova Campanha de Disparo</h3>
+            <form onSubmit={handleSubmit} className="space-y-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div className="col-span-2">
+                  <label className="block text-sm text-muted-foreground mb-1.5">Nome da campanha *</label>
+                  <input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })}
+                    placeholder="Ex: Promoção Black Friday" required
+                    className="w-full px-3 py-2.5 bg-muted border border-border rounded-xl text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary" />
+                </div>
+                <div>
+                  <label className="block text-sm text-muted-foreground mb-1.5">Lista de contatos *</label>
+                  <select value={form.list_id} onChange={(e) => setForm({ ...form, list_id: e.target.value })} required
+                    className="w-full px-3 py-2.5 bg-muted border border-border rounded-xl text-foreground focus:outline-none focus:ring-2 focus:ring-primary">
+                    <option value="">Selecione...</option>
+                    {lists.map((l) => <option key={l.id} value={l.id}>{l.name} ({l.total})</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm text-muted-foreground mb-1.5">Provedor IA *</label>
+                  <select value={form.ai_provider} onChange={(e) => setForm({ ...form, ai_provider: e.target.value })} required
+                    className="w-full px-3 py-2.5 bg-muted border border-border rounded-xl text-foreground focus:outline-none focus:ring-2 focus:ring-primary">
+                    {aiConfigs.map((a) => <option key={a.provider} value={a.provider}>{a.provider.toUpperCase()}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm text-muted-foreground mb-1.5">Delay mín. (seg)</label>
+                  <input type="number" min="3" value={form.min_delay} onChange={(e) => setForm({ ...form, min_delay: e.target.value })}
+                    className="w-full px-3 py-2.5 bg-muted border border-border rounded-xl text-foreground focus:outline-none focus:ring-2 focus:ring-primary" />
+                </div>
+                <div>
+                  <label className="block text-sm text-muted-foreground mb-1.5">Delay máx. (seg)</label>
+                  <input type="number" min="5" value={form.max_delay} onChange={(e) => setForm({ ...form, max_delay: e.target.value })}
+                    className="w-full px-3 py-2.5 bg-muted border border-border rounded-xl text-foreground focus:outline-none focus:ring-2 focus:ring-primary" />
+                </div>
+                <div>
+                  <label className="block text-sm text-muted-foreground mb-1.5">Tipo de mídia</label>
+                  <select value={form.media_type} onChange={(e) => setForm({ ...form, media_type: e.target.value })}
+                    className="w-full px-3 py-2.5 bg-muted border border-border rounded-xl text-foreground focus:outline-none focus:ring-2 focus:ring-primary">
+                    <option value="none">Apenas texto</option>
+                    <option value="image">Imagem + texto</option>
+                    <option value="audio">Áudio (TTS) + imagem (opcional)</option>
+                  </select>
+                </div>
+              </div>
+
+              {form.media_type !== 'none' && (
+                <div>
+                  <label className="block text-sm text-muted-foreground mb-1.5">
+                    {form.media_type === 'image' ? 'Imagem (obrigatória)' : 'Imagem (opcional para áudio)'}
+                  </label>
+                  <div className="flex items-center gap-3">
+                    <input ref={mediaRef} type="file" accept="image/*" className="hidden" id="media-upload" />
+                    <label htmlFor="media-upload" className="flex items-center gap-2 px-4 py-2.5 bg-muted border border-dashed border-border rounded-xl text-sm text-muted-foreground cursor-pointer hover:bg-muted/80 transition-colors">
+                      <Upload className="w-4 h-4" /> Selecionar imagem
+                    </label>
+                  </div>
+                </div>
+              )}
+
+              <div className="col-span-2">
+                <label className="block text-sm text-muted-foreground mb-1.5">Prompt para IA * <span className="text-xs">(instrução de como gerar as mensagens)</span></label>
+                <textarea value={form.prompt} onChange={(e) => setForm({ ...form, prompt: e.target.value })} required rows={4}
+                  placeholder="Ex: Você é um vendedor de planos de TV por assinatura. Crie uma mensagem convidando o cliente para conhecer nossos planos premium, mencione o nome do contato de forma natural..."
+                  className="w-full px-3 py-2.5 bg-muted border border-border rounded-xl text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary resize-none" />
+              </div>
+
+              <div>
+                <label className="block text-sm text-muted-foreground mb-2">Números WhatsApp * <span className="text-xs">(selecione os números para rotacionar)</span></label>
+                <div className="flex flex-wrap gap-2">
+                  {connectedSessions.map((s) => (
+                    <button type="button" key={s.id} onClick={() => toggleSession(s.id)}
+                      className={`px-3 py-1.5 rounded-xl text-sm transition-colors ${form.session_ids.includes(s.id) ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground hover:bg-muted/80'}`}>
+                      {s.name}
+                    </button>
+                  ))}
+                  {connectedSessions.length === 0 && <p className="text-sm text-destructive">Nenhum número conectado</p>}
+                </div>
+              </div>
+
+              <div className="flex gap-3 pt-2">
+                <button type="button" onClick={() => setShowForm(false)}
+                  className="flex-1 py-2.5 bg-muted rounded-xl text-sm font-medium hover:bg-muted/80 transition-colors">
+                  Cancelar
+                </button>
+                <button type="submit" disabled={submitting}
+                  className="flex-1 py-2.5 bg-primary text-primary-foreground rounded-xl text-sm font-medium hover:bg-primary/90 disabled:opacity-50 transition-colors flex items-center justify-center gap-2">
+                  {submitting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+                  Iniciar Campanha
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}

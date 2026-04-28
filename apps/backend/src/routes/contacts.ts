@@ -1,0 +1,162 @@
+import { FastifyInstance } from 'fastify'
+import { v4 as uuidv4 } from 'uuid'
+import { parse } from 'csv-parse/sync'
+import { stringify } from 'csv-stringify/sync'
+import { query, queryOne } from '../lib/db'
+import { baileysService } from '../services/BaileysService'
+
+export async function contactsRoutes(app: FastifyInstance) {
+  app.get('/contacts/lists', { preHandler: [app.authenticate] }, async () => {
+    return query(
+      'SELECT id, name, source, total, created_at FROM contact_lists ORDER BY created_at DESC',
+    )
+  })
+
+  app.get('/contacts/lists/:id', { preHandler: [app.authenticate] }, async (req, reply) => {
+    const { id } = req.params as { id: string }
+    const list = await queryOne('SELECT * FROM contact_lists WHERE id = ?', [id])
+    if (!list) return reply.status(404).send({ error: 'Lista não encontrada' })
+    const contacts = await query(
+      'SELECT id, phone, name, extra_data FROM contacts WHERE list_id = ? ORDER BY created_at',
+      [id],
+    )
+    return { list, contacts }
+  })
+
+  app.delete('/contacts/lists/:id', { preHandler: [app.authenticate] }, async (req, reply) => {
+    const { id } = req.params as { id: string }
+    const list = await queryOne('SELECT id FROM contact_lists WHERE id = ?', [id])
+    if (!list) return reply.status(404).send({ error: 'Lista não encontrada' })
+    await query('DELETE FROM contact_lists WHERE id = ?', [id])
+    return { message: 'Lista removida' }
+  })
+
+  app.post('/contacts/import', { preHandler: [app.authenticate] }, async (req, reply) => {
+    const data = await req.file()
+    if (!data) return reply.status(400).send({ error: 'Arquivo CSV obrigatório' })
+
+    const { name } = req.query as { name?: string }
+    const buffer = await data.toBuffer()
+    const content = buffer.toString('utf-8')
+
+    let records: Record<string, string>[]
+    try {
+      records = parse(content, { columns: true, skip_empty_lines: true, trim: true })
+    } catch {
+      return reply.status(400).send({ error: 'CSV inválido' })
+    }
+
+    const listId = uuidv4()
+    const listName = name || data.filename?.replace('.csv', '') || 'Lista importada'
+
+    await query(
+      "INSERT INTO contact_lists (id, name, source, total) VALUES (?, ?, 'csv_import', ?)",
+      [listId, listName, records.length],
+    )
+
+    const phoneFields = ['phone', 'telefone', 'numero', 'number', 'celular', 'whatsapp']
+    const nameFields = ['name', 'nome', 'contato', 'contact']
+
+    for (const row of records) {
+      const phoneField = phoneFields.find((f) => row[f] !== undefined)
+      const nameField = nameFields.find((f) => row[f] !== undefined)
+
+      if (!phoneField) continue
+
+      const phone = normalizePhone(row[phoneField])
+      if (!phone) continue
+
+      const contactName = nameField ? row[nameField] : null
+      const id = uuidv4()
+
+      await query(
+        'INSERT INTO contacts (id, list_id, phone, name, extra_data) VALUES (?, ?, ?, ?, ?)',
+        [id, listId, phone, contactName, JSON.stringify(row)],
+      )
+    }
+
+    return { listId, name: listName, total: records.length }
+  })
+
+  app.post('/contacts/extract-group', { preHandler: [app.authenticate] }, async (req, reply) => {
+    const { sessionId, groupId, listName } = req.body as {
+      sessionId: string
+      groupId: string
+      listName: string
+    }
+
+    if (!baileysService.isConnected(sessionId)) {
+      return reply.status(400).send({ error: 'Sessão não conectada' })
+    }
+
+    const participants = await baileysService.getGroupParticipants(sessionId, groupId)
+
+    const listId = uuidv4()
+    await query(
+      "INSERT INTO contact_lists (id, name, source, total) VALUES (?, ?, 'group_extract', ?)",
+      [listId, listName, participants.length],
+    )
+
+    for (const p of participants) {
+      await query('INSERT INTO contacts (id, list_id, phone, name) VALUES (?, ?, ?, ?)', [
+        uuidv4(),
+        listId,
+        p.phone,
+        p.name,
+      ])
+    }
+
+    return { listId, name: listName, total: participants.length }
+  })
+
+  app.post('/contacts/extract-contacts', {
+    preHandler: [app.authenticate],
+  }, async (req, reply) => {
+    const { sessionId, listName } = req.body as { sessionId: string; listName: string }
+
+    if (!baileysService.isConnected(sessionId)) {
+      return reply.status(400).send({ error: 'Sessão não conectada' })
+    }
+
+    const contacts = await baileysService.getContacts(sessionId)
+
+    const listId = uuidv4()
+    await query(
+      "INSERT INTO contact_lists (id, name, source, total) VALUES (?, ?, 'contact_extract', ?)",
+      [listId, listName, contacts.length],
+    )
+
+    for (const c of contacts) {
+      await query('INSERT INTO contacts (id, list_id, phone, name) VALUES (?, ?, ?, ?)', [
+        uuidv4(),
+        listId,
+        c.phone,
+        c.name,
+      ])
+    }
+
+    return { listId, name: listName, total: contacts.length }
+  })
+
+  app.get('/contacts/lists/:id/export', { preHandler: [app.authenticate] }, async (req, reply) => {
+    const { id } = req.params as { id: string }
+    const contacts = await query<{ phone: string; name: string }>(
+      'SELECT phone, name FROM contacts WHERE list_id = ?',
+      [id],
+    )
+    const csv = stringify(contacts, { header: true, columns: ['phone', 'name'] })
+    reply.header('Content-Type', 'text/csv')
+    reply.header('Content-Disposition', `attachment; filename="contacts-${id}.csv"`)
+    return reply.send(csv)
+  })
+}
+
+function normalizePhone(raw: string): string | null {
+  if (!raw) return null
+  const digits = raw.replace(/\D/g, '')
+  if (digits.length < 10) return null
+  if (!digits.startsWith('55') && digits.length <= 13) {
+    return `55${digits}`
+  }
+  return digits
+}
