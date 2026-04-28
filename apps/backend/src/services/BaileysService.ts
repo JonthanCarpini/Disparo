@@ -325,36 +325,59 @@ class BaileysService {
 
     const lidMap = this.lidToPhone.get(sessionId) || new Map<string, string>()
     const result: { phone: string; name: string }[] = []
-    let resolvedFromLid = 0
-    let unresolvedLids = 0
+
+    const regularJids: typeof meta.participants = []
+    const lidJids: typeof meta.participants = []
 
     for (const p of meta.participants) {
       const jid = String(p.id || '')
-      const pAny = p as unknown as Record<string, unknown>
+      if (jid.endsWith('@s.whatsapp.net')) regularJids.push(p)
+      else if (jid.endsWith('@lid')) lidJids.push(p)
+    }
 
-      if (jid.endsWith('@s.whatsapp.net')) {
-        const rawPhone = jid.split('@')[0].split(':')[0]
-        if (/^\d{8,15}$/.test(rawPhone)) {
-          const name = String(pAny.pushName || pAny.notify || pAny.name || rawPhone)
-          result.push({ phone: rawPhone, name })
-        }
-        continue
+    for (const p of regularJids) {
+      const jid = String(p.id || '')
+      const rawPhone = jid.split('@')[0].split(':')[0]
+      if (/^\d{8,15}$/.test(rawPhone)) {
+        const pAny = p as unknown as Record<string, unknown>
+        result.push({ phone: rawPhone, name: String(pAny.pushName || pAny.notify || rawPhone) })
+      }
+    }
+
+    if (lidJids.length > 0) {
+      const cachedLids = lidJids.filter((p) => lidMap.has(String(p.id).split('@')[0]))
+      const uncachedLids = lidJids.filter((p) => !lidMap.has(String(p.id).split('@')[0]))
+
+      for (const p of cachedLids) {
+        const lid = String(p.id).split('@')[0]
+        const phone = lidMap.get(lid)!
+        const pAny = p as unknown as Record<string, unknown>
+        result.push({ phone, name: String(pAny.pushName || pAny.notify || phone) })
       }
 
-      if (jid.endsWith('@lid')) {
-        const lidNum = jid.split('@')[0]
-        const resolvedPhone = lidMap.get(lidNum)
-        if (resolvedPhone) {
-          const name = String(pAny.pushName || pAny.notify || pAny.name || resolvedPhone)
-          result.push({ phone: resolvedPhone, name })
-          resolvedFromLid++
-        } else {
-          unresolvedLids++
+      if (uncachedLids.length > 0) {
+        logger.info({ sessionId, groupId, uncachedLids: uncachedLids.length }, 'Resolvendo LIDs via onWhatsApp')
+        try {
+          const lidIds = uncachedLids.map((p) => String(p.id))
+          const resolved = await (sock as unknown as { onWhatsApp: (...jids: string[]) => Promise<{ jid: string; lid?: string; exists: boolean }[] | undefined> }).onWhatsApp(...lidIds)
+          if (resolved) {
+            for (const r of resolved) {
+              if (r.jid && r.jid.endsWith('@s.whatsapp.net')) {
+                const phone = r.jid.split('@')[0].split(':')[0]
+                if (r.lid) lidMap.set(r.lid.split('@')[0], phone)
+                if (/^\d{8,15}$/.test(phone)) {
+                  result.push({ phone, name: phone })
+                }
+              }
+            }
+          }
+        } catch (err) {
+          logger.warn({ sessionId, err }, 'Falha ao resolver LIDs via onWhatsApp')
         }
       }
     }
 
-    logger.info({ sessionId, groupId, extracted: result.length, resolvedFromLid, unresolvedLids, lidMapSize: lidMap.size }, 'getGroupParticipants extracted')
+    logger.info({ sessionId, groupId, extracted: result.length, lids: lidJids.length, regular: regularJids.length }, 'getGroupParticipants extracted')
     return result
   }
 
