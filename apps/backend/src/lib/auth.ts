@@ -35,10 +35,10 @@ export async function findUser(username: string): Promise<(AuthUser & { password
 export async function ensureDefaultUser() {
   const existing = await query('SELECT id FROM users LIMIT 1')
   if (existing.length === 0) {
-    const hashed = await hashPassword(process.env.ADMIN_PASSWORD || 'admin123')
-    await query('INSERT INTO users (username, password) VALUES (?, ?)', [
-      process.env.ADMIN_USERNAME || 'admin',
-      hashed,
-    ])
+    const username = process.env.DEFAULT_ADMIN_USER || 'admin'
+    const password = process.env.DEFAULT_ADMIN_PASS || 'admin123'
+    const hashed = await hashPassword(password)
+    await query('INSERT INTO users (username, password) VALUES (?, ?)', [username, hashed])
+    console.log(`[auth] Usuário padrão criado: ${username}`)
   }
 }
