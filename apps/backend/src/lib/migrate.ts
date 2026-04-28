@@ -32,7 +32,8 @@ CREATE TABLE IF NOT EXISTS contact_lists (
 CREATE TABLE IF NOT EXISTS contacts (
   id VARCHAR(36) PRIMARY KEY,
   list_id VARCHAR(36) NOT NULL,
-  phone VARCHAR(30) NOT NULL,
+  phone VARCHAR(50) NOT NULL,
+  jid VARCHAR(100),
   name VARCHAR(200),
   extra_data JSON,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -109,7 +110,30 @@ export async function runMigrations() {
   for (const stmt of statements) {
     await db.execute(stmt)
   }
+
+  await ensureColumn(db, 'contacts', 'jid', 'VARCHAR(100) NULL AFTER phone')
+  await ensureColumnType(db, 'contacts', 'phone', 'VARCHAR(50) NOT NULL')
+
   logger.info('Migração concluída com sucesso')
+}
+
+async function ensureColumn(db: ReturnType<typeof getDb>, table: string, column: string, definition: string) {
+  const [rows] = await db.execute(
+    `SELECT COLUMN_NAME FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND COLUMN_NAME = ?`,
+    [table, column],
+  )
+  if (Array.isArray(rows) && rows.length === 0) {
+    await db.execute(`ALTER TABLE \`${table}\` ADD COLUMN \`${column}\` ${definition}`)
+    logger.info(`Coluna ${table}.${column} adicionada`)
+  }
+}
+
+async function ensureColumnType(db: ReturnType<typeof getDb>, table: string, column: string, definition: string) {
+  try {
+    await db.execute(`ALTER TABLE \`${table}\` MODIFY COLUMN \`${column}\` ${definition}`)
+  } catch (err) {
+    logger.warn({ err: String(err) }, `ensureColumnType falhou para ${table}.${column}`)
+  }
 }
 
 if (require.main === module) {

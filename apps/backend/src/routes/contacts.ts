@@ -93,7 +93,7 @@ export async function contactsRoutes(app: FastifyInstance) {
 
     if (participants.length === 0) {
       return reply.status(422).send({
-        error: 'Nenhum contato pôde ser extraído deste grupo. Os participantes usam privacidade máxima no WhatsApp (LID), que não permite extração via WhatsApp Web. Tente um grupo onde você tenha os contatos salvos na agenda.',
+        error: 'Nenhum participante encontrado neste grupo.',
       })
     }
 
@@ -103,14 +103,7 @@ export async function contactsRoutes(app: FastifyInstance) {
       [listId, listName, participants.length],
     )
 
-    for (const p of participants) {
-      await query('INSERT INTO contacts (id, list_id, phone, name) VALUES (?, ?, ?, ?)', [
-        uuidv4(),
-        listId,
-        p.phone,
-        p.name,
-      ])
-    }
+    await bulkInsertContacts(listId, participants)
 
     return { listId, name: listName, total: participants.length }
   })
@@ -132,14 +125,7 @@ export async function contactsRoutes(app: FastifyInstance) {
       [listId, listName, contacts.length],
     )
 
-    for (const c of contacts) {
-      await query('INSERT INTO contacts (id, list_id, phone, name) VALUES (?, ?, ?, ?)', [
-        uuidv4(),
-        listId,
-        c.phone,
-        c.name,
-      ])
-    }
+    await bulkInsertContacts(listId, contacts.map((c) => ({ ...c, jid: `${c.phone}@s.whatsapp.net` })))
 
     return { listId, name: listName, total: contacts.length }
   })
@@ -169,6 +155,26 @@ export async function contactsRoutes(app: FastifyInstance) {
     reply.header('Content-Disposition', `attachment; filename="${filename}.csv"`)
     return reply.send(BOM + csv)
   })
+}
+
+async function bulkInsertContacts(
+  listId: string,
+  contacts: { phone: string; name: string; jid?: string }[],
+): Promise<void> {
+  if (contacts.length === 0) return
+  const BATCH = 500
+  for (let i = 0; i < contacts.length; i += BATCH) {
+    const slice = contacts.slice(i, i + BATCH)
+    const placeholders = slice.map(() => '(?, ?, ?, ?, ?)').join(', ')
+    const values: string[] = []
+    for (const c of slice) {
+      values.push(uuidv4(), listId, c.phone, c.jid || `${c.phone}@s.whatsapp.net`, c.name)
+    }
+    await query(
+      `INSERT INTO contacts (id, list_id, phone, jid, name) VALUES ${placeholders}`,
+      values,
+    )
+  }
 }
 
 function normalizePhone(raw: string): string | null {

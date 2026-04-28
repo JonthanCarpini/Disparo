@@ -29,6 +29,7 @@ interface Campaign {
 interface Contact {
   id: string
   phone: string
+  jid: string | null
   name: string | null
 }
 
@@ -87,7 +88,7 @@ async function processCampaign(campaignId: string) {
   }
 
   const contacts = await query<Contact>(
-    'SELECT id, phone, name FROM contacts WHERE list_id = ? ORDER BY RAND()',
+    'SELECT id, phone, jid, name FROM contacts WHERE list_id = ? ORDER BY RAND()',
     [campaign.list_id],
   )
 
@@ -122,11 +123,13 @@ async function processCampaign(campaignId: string) {
         contact.phone,
       )
 
+      const target = contact.jid || contact.phone
+
       if (campaign.media_type === 'none') {
-        await baileysService.sendText(sessionId, contact.phone, message)
+        await baileysService.sendText(sessionId, target, message)
       } else if (campaign.media_type === 'image' && campaign.media_path) {
         const imagePath = path.join(UPLOADS_DIR, campaign.media_path)
-        await baileysService.sendImage(sessionId, contact.phone, imagePath, message)
+        await baileysService.sendImage(sessionId, target, imagePath, message)
       } else if (campaign.media_type === 'audio') {
         const audioPath = path.join(TEMP_DIR, `${logId}.ogg`)
         fs.mkdirSync(TEMP_DIR, { recursive: true })
@@ -136,13 +139,13 @@ async function processCampaign(campaignId: string) {
           const imagePath = path.join(UPLOADS_DIR, campaign.media_path)
           await baileysService.sendImageWithAudio(
             sessionId,
-            contact.phone,
+            target,
             imagePath,
             audioPath,
             message,
           )
         } else {
-          await baileysService.sendAudio(sessionId, contact.phone, audioPath)
+          await baileysService.sendAudio(sessionId, target, audioPath)
         }
 
         fs.unlink(audioPath, () => null)

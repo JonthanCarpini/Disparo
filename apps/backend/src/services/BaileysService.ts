@@ -422,50 +422,56 @@ class BaileysService {
   async getGroupParticipants(
     sessionId: string,
     groupId: string,
-  ): Promise<{ phone: string; name: string }[]> {
+  ): Promise<{ phone: string; jid: string; name: string }[]> {
     const sock = this.sockets.get(sessionId)
     if (!sock) throw new Error(`Sessão ${sessionId} não conectada`)
     const meta = await sock.groupMetadata(groupId)
     logger.info({ sessionId, groupId, total: meta.participants.length, sample: meta.participants.slice(0, 3).map(p => ({ id: p.id })) }, 'getGroupParticipants raw')
 
     const lidMap = this.lidToPhone.get(sessionId) || new Map<string, string>()
-    const result: { phone: string; name: string }[] = []
+    const result: { phone: string; jid: string; name: string }[] = []
 
-    const regularJids: typeof meta.participants = []
-    const lidJids: typeof meta.participants = []
+    let lidsResolved = 0
+    let lidsAsIs = 0
+    let regularCount = 0
 
     for (const p of meta.participants) {
       const jid = String(p.id || '')
-      if (jid.endsWith('@s.whatsapp.net')) regularJids.push(p)
-      else if (jid.endsWith('@lid')) lidJids.push(p)
-    }
+      const pAny = p as unknown as Record<string, unknown>
+      const rawName = String(pAny.pushName || pAny.notify || pAny.name || '')
 
-    for (const p of regularJids) {
-      const jid = String(p.id || '')
-      const rawPhone = jid.split('@')[0].split(':')[0]
-      if (/^\d{8,15}$/.test(rawPhone)) {
-        const pAny = p as unknown as Record<string, unknown>
-        result.push({ phone: rawPhone, name: String(pAny.pushName || pAny.notify || rawPhone) })
+      if (jid.endsWith('@s.whatsapp.net')) {
+        const phone = jid.split('@')[0].split(':')[0]
+        if (/^\d{8,15}$/.test(phone)) {
+          result.push({ phone, jid, name: rawName || phone })
+          regularCount++
+        }
+        continue
+      }
+
+      if (jid.endsWith('@lid')) {
+        const lidNum = jid.split('@')[0]
+        const mappedPhone = lidMap.get(lidNum)
+
+        if (mappedPhone) {
+          result.push({
+            phone: mappedPhone,
+            jid: `${mappedPhone}@s.whatsapp.net`,
+            name: rawName || mappedPhone,
+          })
+          lidsResolved++
+        } else {
+          result.push({
+            phone: lidNum,
+            jid,
+            name: rawName || lidNum,
+          })
+          lidsAsIs++
+        }
       }
     }
 
-    if (lidJids.length > 0) {
-      const cachedLids = lidJids.filter((p) => lidMap.has(String(p.id).split('@')[0]))
-      const uncachedLids = lidJids.filter((p) => !lidMap.has(String(p.id).split('@')[0]))
-
-      for (const p of cachedLids) {
-        const lid = String(p.id).split('@')[0]
-        const phone = lidMap.get(lid)!
-        const pAny = p as unknown as Record<string, unknown>
-        result.push({ phone, name: String(pAny.pushName || pAny.notify || phone) })
-      }
-
-      if (uncachedLids.length > 0) {
-        logger.warn({ sessionId, groupId, unresolvedLids: uncachedLids.length }, 'Participantes com LID (privacidade máxima) não podem ser resolvidos via WA Web')
-      }
-    }
-
-    logger.info({ sessionId, groupId, extracted: result.length, lids: lidJids.length, regular: regularJids.length }, 'getGroupParticipants extracted')
+    logger.info({ sessionId, groupId, extracted: result.length, regularCount, lidsResolved, lidsAsIs }, 'getGroupParticipants extracted')
     return result
   }
 
