@@ -29,6 +29,7 @@ class BaileysService {
   private statusCallbacks: Set<StatusCallback> = new Set()
   private qrCache: Map<string, string> = new Map()
   private retryCount: Map<string, number> = new Map()
+  private lidToPhone: Map<string, Map<string, string>> = new Map()
 
   onQR(cb: QRCallback) {
     this.qrCallbacks.add(cb)
@@ -103,6 +104,44 @@ class BaileysService {
     this.sockets.set(sessionId, sock)
 
     sock.ev.on('creds.update', saveCreds)
+
+    if (!this.lidToPhone.has(sessionId)) {
+      this.lidToPhone.set(sessionId, new Map())
+    }
+    const lidMap = this.lidToPhone.get(sessionId)!
+
+    sock.ev.on('contacts.upsert', (contacts) => {
+      for (const c of contacts) {
+        const jid = String(c.id || '')
+        const lid = String((c as unknown as Record<string, unknown>).lid || '')
+        if (lid && jid.endsWith('@s.whatsapp.net')) {
+          const phone = jid.split('@')[0].split(':')[0]
+          if (/^\d{8,15}$/.test(phone)) {
+            lidMap.set(lid.split('@')[0], phone)
+          }
+        }
+        if (jid.endsWith('@s.whatsapp.net')) {
+          const phone = jid.split('@')[0].split(':')[0]
+          if (/^\d{8,15}$/.test(phone)) {
+            lidMap.set(phone, phone)
+          }
+        }
+      }
+      logger.debug({ sessionId, lidMapSize: lidMap.size }, 'lidMap atualizado')
+    })
+
+    sock.ev.on('contacts.update', (updates) => {
+      for (const u of updates) {
+        const jid = String(u.id || '')
+        const lid = String((u as unknown as Record<string, unknown>).lid || '')
+        if (lid && jid.endsWith('@s.whatsapp.net')) {
+          const phone = jid.split('@')[0].split(':')[0]
+          if (/^\d{8,15}$/.test(phone)) {
+            lidMap.set(lid.split('@')[0], phone)
+          }
+        }
+      }
+    })
 
     sock.ev.on('connection.update', async (update) => {
       const { connection, lastDisconnect, qr } = update
@@ -247,7 +286,10 @@ class BaileysService {
     const meta = await sock.groupMetadata(groupId)
     logger.info({ sessionId, groupId, total: meta.participants.length, sample: meta.participants.slice(0, 3).map(p => ({ id: p.id })) }, 'getGroupParticipants raw')
 
+    const lidMap = this.lidToPhone.get(sessionId) || new Map<string, string>()
     const result: { phone: string; name: string }[] = []
+    let resolvedFromLid = 0
+    let unresolvedLids = 0
 
     for (const p of meta.participants) {
       const jid = String(p.id || '')
@@ -263,16 +305,19 @@ class BaileysService {
       }
 
       if (jid.endsWith('@lid')) {
-        const phoneNum = String(pAny.phoneNumber || pAny.phone || '')
-        const rawPhone = phoneNum.replace(/\D/g, '').replace(/^0+/, '')
-        if (rawPhone && /^\d{8,15}$/.test(rawPhone)) {
-          const name = String(pAny.pushName || pAny.notify || pAny.name || rawPhone)
-          result.push({ phone: rawPhone, name })
+        const lidNum = jid.split('@')[0]
+        const resolvedPhone = lidMap.get(lidNum)
+        if (resolvedPhone) {
+          const name = String(pAny.pushName || pAny.notify || pAny.name || resolvedPhone)
+          result.push({ phone: resolvedPhone, name })
+          resolvedFromLid++
+        } else {
+          unresolvedLids++
         }
       }
     }
 
-    logger.info({ sessionId, groupId, extracted: result.length, lids: meta.participants.filter(p => String(p.id).endsWith('@lid')).length }, 'getGroupParticipants extracted')
+    logger.info({ sessionId, groupId, extracted: result.length, resolvedFromLid, unresolvedLids, lidMapSize: lidMap.size }, 'getGroupParticipants extracted')
     return result
   }
 
