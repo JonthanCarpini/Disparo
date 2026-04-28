@@ -356,24 +356,7 @@ class BaileysService {
       }
 
       if (uncachedLids.length > 0) {
-        logger.info({ sessionId, groupId, uncachedLids: uncachedLids.length }, 'Resolvendo LIDs via onWhatsApp')
-        try {
-          const lidIds = uncachedLids.map((p) => String(p.id))
-          const resolved = await (sock as unknown as { onWhatsApp: (...jids: string[]) => Promise<{ jid: string; lid?: string; exists: boolean }[] | undefined> }).onWhatsApp(...lidIds)
-          if (resolved) {
-            for (const r of resolved) {
-              if (r.jid && r.jid.endsWith('@s.whatsapp.net')) {
-                const phone = r.jid.split('@')[0].split(':')[0]
-                if (r.lid) lidMap.set(r.lid.split('@')[0], phone)
-                if (/^\d{8,15}$/.test(phone)) {
-                  result.push({ phone, name: phone })
-                }
-              }
-            }
-          }
-        } catch (err) {
-          logger.warn({ sessionId, err }, 'Falha ao resolver LIDs via onWhatsApp')
-        }
+        logger.warn({ sessionId, groupId, unresolvedLids: uncachedLids.length }, 'Participantes com LID (privacidade máxima) não podem ser resolvidos via WA Web')
       }
     }
 

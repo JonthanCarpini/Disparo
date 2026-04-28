@@ -91,6 +91,12 @@ export async function contactsRoutes(app: FastifyInstance) {
 
     const participants = await baileysService.getGroupParticipants(sessionId, groupId)
 
+    if (participants.length === 0) {
+      return reply.status(422).send({
+        error: 'Nenhum contato pôde ser extraído deste grupo. Os participantes usam privacidade máxima no WhatsApp (LID), que não permite extração via WhatsApp Web. Tente um grupo onde você tenha os contatos salvos na agenda.',
+      })
+    }
+
     const listId = uuidv4()
     await query(
       "INSERT INTO contact_lists (id, name, source, total) VALUES (?, ?, 'group_extract', ?)",
