@@ -245,10 +245,14 @@ class BaileysService {
     const sock = this.sockets.get(sessionId)
     if (!sock) throw new Error(`Sessão ${sessionId} não conectada`)
     const meta = await sock.groupMetadata(groupId)
-    return meta.participants.map((p) => ({
-      phone: p.id.split('@')[0],
-      name: p.id.split('@')[0],
-    }))
+    return meta.participants
+      .filter((p) => p.id.endsWith('@s.whatsapp.net'))
+      .map((p) => {
+        const rawPhone = p.id.split('@')[0]
+        const phone = rawPhone.split(':')[0]
+        const name = (p as { pushName?: string }).pushName || phone
+        return { phone, name }
+      })
   }
 
   async getContacts(sessionId: string): Promise<{ phone: string; name: string }[]> {

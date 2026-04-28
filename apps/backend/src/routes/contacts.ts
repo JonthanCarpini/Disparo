@@ -140,22 +140,37 @@ export async function contactsRoutes(app: FastifyInstance) {
 
   app.get('/contacts/lists/:id/export', { preHandler: [app.authenticate] }, async (req, reply) => {
     const { id } = req.params as { id: string }
+    const list = await queryOne<{ name: string }>('SELECT name FROM contact_lists WHERE id = ?', [id])
     const contacts = await query<{ phone: string; name: string }>(
-      'SELECT phone, name FROM contacts WHERE list_id = ?',
+      'SELECT phone, name FROM contacts WHERE list_id = ? ORDER BY created_at',
       [id],
     )
-    const csv = stringify(contacts, { header: true, columns: ['phone', 'name'] })
-    reply.header('Content-Type', 'text/csv')
-    reply.header('Content-Disposition', `attachment; filename="contacts-${id}.csv"`)
-    return reply.send(csv)
+
+    const cleaned = contacts.map((c) => ({
+      phone: String(c.phone || '').split(':')[0],
+      name: c.name || '',
+    }))
+
+    const csv = stringify(cleaned, {
+      header: true,
+      columns: ['phone', 'name'],
+      delimiter: ';',
+    })
+
+    const BOM = '\uFEFF'
+    const filename = (list?.name || id).replace(/[^a-zA-Z0-9_\-]/g, '_')
+    reply.header('Content-Type', 'text/csv; charset=utf-8')
+    reply.header('Content-Disposition', `attachment; filename="${filename}.csv"`)
+    return reply.send(BOM + csv)
   })
 }
 
 function normalizePhone(raw: string): string | null {
   if (!raw) return null
-  const digits = raw.replace(/\D/g, '')
-  if (digits.length < 10) return null
-  if (!digits.startsWith('55') && digits.length <= 13) {
+  const cleaned = raw.split(':')[0].split('@')[0]
+  const digits = cleaned.replace(/\D/g, '')
+  if (digits.length < 10 || digits.length > 15) return null
+  if (!digits.startsWith('55') && digits.length <= 11) {
     return `55${digits}`
   }
   return digits
