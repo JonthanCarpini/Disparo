@@ -103,6 +103,9 @@ class BaileysService {
       retryRequestDelayMs: 2000,
       maxMsgRetryCount: 3,
       qrTimeout: 60000,
+      syncFullHistory: true,
+      shouldSyncHistoryMessage: () => true,
+      markOnlineOnConnect: true,
     })
 
     this.sockets.set(sessionId, sock)
@@ -113,6 +116,31 @@ class BaileysService {
       this.lidToPhone.set(sessionId, new Map())
     }
     const lidMap = this.lidToPhone.get(sessionId)!
+
+    const lidMapPath = path.join(dir, 'lid-map.json')
+    try {
+      if (fs.existsSync(lidMapPath)) {
+        const saved = JSON.parse(fs.readFileSync(lidMapPath, 'utf-8'))
+        for (const [k, v] of Object.entries(saved)) {
+          lidMap.set(k, String(v))
+        }
+        logger.info({ sessionId, loaded: lidMap.size }, 'lidMap carregado do disco')
+      }
+    } catch (err) {
+      logger.warn({ sessionId, err }, 'Falha ao carregar lidMap do disco')
+    }
+
+    const persistLidMap = () => {
+      try {
+        const obj: Record<string, string> = {}
+        lidMap.forEach((v, k) => { obj[k] = v })
+        fs.writeFileSync(lidMapPath, JSON.stringify(obj))
+      } catch (err) {
+        logger.warn({ sessionId, err }, 'Falha ao persistir lidMap')
+      }
+    }
+
+    setInterval(persistLidMap, 30000)
 
     sock.ev.on('contacts.upsert', (contacts) => {
       for (const c of contacts) {
@@ -175,6 +203,56 @@ class BaileysService {
             if (/^\d{8,15}$/.test(phone) && pushName) {
               lidMap.set(phone, phone)
             }
+          }
+        }
+      }
+    })
+
+    sock.ev.on('messaging-history.set', (data) => {
+      const dataAny = data as unknown as {
+        contacts?: Array<{ id?: string; lid?: string; name?: string; notify?: string }>
+        chats?: Array<{ id?: string; lid?: string; name?: string }>
+      }
+      let added = 0
+      if (dataAny.contacts) {
+        for (const c of dataAny.contacts) {
+          const jid = String(c.id || '')
+          const lid = String(c.lid || '')
+          if (lid && jid.endsWith('@s.whatsapp.net')) {
+            const phone = jid.split('@')[0].split(':')[0]
+            if (/^\d{8,15}$/.test(phone)) {
+              const lidNum = lid.split('@')[0]
+              lidMap.set(lidNum, phone)
+              added++
+            }
+          }
+        }
+      }
+      if (dataAny.chats) {
+        for (const chat of dataAny.chats) {
+          const jid = String(chat.id || '')
+          const lid = String(chat.lid || '')
+          if (lid && jid.endsWith('@s.whatsapp.net')) {
+            const phone = jid.split('@')[0].split(':')[0]
+            if (/^\d{8,15}$/.test(phone)) {
+              lidMap.set(lid.split('@')[0], phone)
+              added++
+            }
+          }
+        }
+      }
+      logger.info({ sessionId, added, totalMap: lidMap.size, contacts: dataAny.contacts?.length || 0, chats: dataAny.chats?.length || 0 }, 'messaging-history.set processado')
+    })
+
+    sock.ev.on('chats.update', (updates) => {
+      for (const u of updates) {
+        const jid = String(u.id || '')
+        const uAny = u as unknown as Record<string, unknown>
+        const lid = String(uAny.lid || uAny.lidJid || '')
+        if (lid && jid.endsWith('@s.whatsapp.net')) {
+          const phone = jid.split('@')[0].split(':')[0]
+          if (/^\d{8,15}$/.test(phone)) {
+            lidMap.set(lid.split('@')[0], phone)
           }
         }
       }
