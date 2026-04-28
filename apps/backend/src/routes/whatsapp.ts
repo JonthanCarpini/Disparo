@@ -52,6 +52,15 @@ export async function whatsappRoutes(app: FastifyInstance) {
     return { message: 'Reconectando...' }
   })
 
+  app.get('/whatsapp/sessions/:id/sync-status', {
+    preHandler: [app.authenticate],
+  }, async (req) => {
+    const { id } = req.params as { id: string }
+    const lidMapSize = baileysService.getLidMapSize(id)
+    const connected = baileysService.isConnected(id)
+    return { connected, lidMapSize, syncing: connected && lidMapSize < 10 }
+  })
+
   app.get('/whatsapp/sessions/:id/qr', {
     preHandler: [app.authenticate],
   }, async (req, reply) => {

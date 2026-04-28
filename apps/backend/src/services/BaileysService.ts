@@ -50,6 +50,10 @@ class BaileysService {
     return this.qrCache.get(sessionId) ?? null
   }
 
+  getLidMapSize(sessionId: string): number {
+    return this.lidToPhone.get(sessionId)?.size ?? 0
+  }
+
   private emitStatus(sessionId: string, status: SessionInfo['status'], phone?: string) {
     this.statusCallbacks.forEach((cb) => cb(sessionId, status, phone))
   }
@@ -133,11 +137,44 @@ class BaileysService {
     sock.ev.on('contacts.update', (updates) => {
       for (const u of updates) {
         const jid = String(u.id || '')
-        const lid = String((u as unknown as Record<string, unknown>).lid || '')
+        const uAny = u as unknown as Record<string, unknown>
+        const lid = String(uAny.lid || '')
         if (lid && jid.endsWith('@s.whatsapp.net')) {
           const phone = jid.split('@')[0].split(':')[0]
           if (/^\d{8,15}$/.test(phone)) {
             lidMap.set(lid.split('@')[0], phone)
+          }
+        }
+      }
+    })
+
+    sock.ev.on('chats.upsert', (chats) => {
+      for (const chat of chats) {
+        const jid = String(chat.id || '')
+        const chatAny = chat as unknown as Record<string, unknown>
+        const lid = String(chatAny.lid || chatAny.lidJid || '')
+        if (lid && jid.endsWith('@s.whatsapp.net')) {
+          const phone = jid.split('@')[0].split(':')[0]
+          if (/^\d{8,15}$/.test(phone)) {
+            lidMap.set(lid.split('@')[0], phone)
+          }
+        }
+      }
+    })
+
+    sock.ev.on('messages.upsert', ({ messages }) => {
+      for (const msg of messages) {
+        const from = String(msg.key?.remoteJid || '')
+        const participant = String(msg.key?.participant || '')
+        const msgAny = msg as unknown as Record<string, unknown>
+        const pushName = String(msgAny.pushName || '')
+        
+        for (const jid of [from, participant]) {
+          if (jid.endsWith('@s.whatsapp.net')) {
+            const phone = jid.split('@')[0].split(':')[0]
+            if (/^\d{8,15}$/.test(phone) && pushName) {
+              lidMap.set(phone, phone)
+            }
           }
         }
       }
