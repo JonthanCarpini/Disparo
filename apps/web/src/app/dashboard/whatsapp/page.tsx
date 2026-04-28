@@ -24,7 +24,11 @@ export default function WhatsAppPage() {
   useEffect(() => {
     loadSessions()
     connectWS()
-    return () => wsRef.current?.close()
+    const refreshInterval = setInterval(loadSessions, 10000)
+    return () => {
+      wsRef.current?.close()
+      clearInterval(refreshInterval)
+    }
   }, [])
 
   useEffect(() => {
