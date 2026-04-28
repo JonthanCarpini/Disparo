@@ -99,7 +99,7 @@ INSERT IGNORE INTO settings (\`key\`, \`value\`) VALUES
   ('default_ai_provider', 'openai');
 `
 
-async function migrate() {
+export async function runMigrations() {
   const db = getDb()
   const statements = schema
     .split(';')
@@ -110,10 +110,13 @@ async function migrate() {
     await db.execute(stmt)
   }
   logger.info('Migração concluída com sucesso')
-  process.exit(0)
 }
 
-migrate().catch((err) => {
-  logger.error({ err }, 'Falha na migração')
-  process.exit(1)
-})
+if (require.main === module) {
+  runMigrations()
+    .then(() => process.exit(0))
+    .catch((err) => {
+      logger.error({ err }, 'Falha na migração')
+      process.exit(1)
+    })
+}

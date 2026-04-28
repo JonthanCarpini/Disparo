@@ -6,6 +6,7 @@ import multipart from '@fastify/multipart'
 import websocket from '@fastify/websocket'
 import { logger } from './lib/logger'
 import { ensureDefaultUser } from './lib/auth'
+import { runMigrations } from './lib/migrate'
 import { baileysService } from './services/BaileysService'
 import { initCampaignQueue } from './workers/CampaignWorker'
 import { authRoutes } from './routes/auth'
@@ -60,6 +61,7 @@ async function bootstrap() {
   const REDIS_URL = process.env.REDIS_URL || 'redis://redis:6379'
   initCampaignQueue(REDIS_URL)
 
+  await runMigrations()
   await ensureDefaultUser()
   await baileysService.loadAllSessions()
 
