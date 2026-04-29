@@ -22,8 +22,13 @@ interface Campaign {
   media_path: string | null
   min_delay: number
   max_delay: number
+  max_per_day: number
+  daily_sent: number
+  last_send_date: string | null
   rotate_sessions: number
   session_ids: string
+  sent: number
+  failed: number
 }
 
 interface Contact {
@@ -87,14 +92,34 @@ async function processCampaign(campaignId: string) {
     throw new Error('Nenhuma sessão WhatsApp conectada para esta campanha')
   }
 
+  // Resume: pula contatos já enviados com sucesso ou marcados sem WhatsApp
   const contacts = await query<Contact>(
-    'SELECT id, phone, jid, name FROM contacts WHERE list_id = ? ORDER BY RAND()',
-    [campaign.list_id],
+    `SELECT c.id, c.phone, c.jid, c.name
+     FROM contacts c
+     LEFT JOIN (
+       SELECT contact_id, MAX(CASE WHEN status = 'sent' THEN 1 ELSE 0 END) AS already_sent
+       FROM campaign_logs WHERE campaign_id = ?
+       GROUP BY contact_id
+     ) cl ON cl.contact_id = c.id
+     WHERE c.list_id = ?
+       AND COALESCE(cl.already_sent, 0) = 0
+       AND (c.wa_exists IS NULL OR c.wa_exists = 1)
+     ORDER BY RAND()`,
+    [campaignId, campaign.list_id],
   )
 
   let sessionIndex = 0
-  let sent = 0
-  let failed = 0
+  let sent = campaign.sent || 0
+  let failed = campaign.failed || 0
+
+  const today = new Date().toISOString().slice(0, 10)
+  let dailySent = campaign.last_send_date === today ? (campaign.daily_sent || 0) : 0
+  if (campaign.last_send_date !== today) {
+    await query(
+      'UPDATE campaigns SET daily_sent = 0, last_send_date = ? WHERE id = ?',
+      [today, campaignId],
+    )
+  }
 
   for (const contact of contacts) {
     const currentCampaign = await queryOne<{ status: string }>(
@@ -103,6 +128,15 @@ async function processCampaign(campaignId: string) {
     )
     if (currentCampaign?.status === 'paused' || currentCampaign?.status === 'failed') {
       logger.info({ campaignId }, 'Campanha pausada ou cancelada')
+      break
+    }
+
+    if (campaign.max_per_day > 0 && dailySent >= campaign.max_per_day) {
+      await query("UPDATE campaigns SET status = 'paused' WHERE id = ?", [campaignId])
+      campaignWsEmitter.emit('campaign:update', {
+        campaignId, status: 'paused', reason: 'max_per_day_reached',
+      })
+      logger.info({ campaignId, dailySent, max: campaign.max_per_day }, 'Limite diário atingido')
       break
     }
 
@@ -156,8 +190,12 @@ async function processCampaign(campaignId: string) {
         [message, logId],
       )
       sent++
+      dailySent++
 
-      await query('UPDATE campaigns SET sent = ? WHERE id = ?', [sent, campaignId])
+      await query(
+        'UPDATE campaigns SET sent = ?, daily_sent = ?, last_send_date = ? WHERE id = ?',
+        [sent, dailySent, today, campaignId],
+      )
       campaignWsEmitter.emit('campaign:progress', {
         campaignId,
         sent,

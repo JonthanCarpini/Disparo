@@ -368,6 +368,50 @@ class BaileysService {
     return Array.from(this.sockets.keys())
   }
 
+  async verifyContacts(
+    sessionId: string,
+    contacts: { phone: string; jid: string | null }[],
+  ): Promise<Map<string, boolean>> {
+    const sock = this.sockets.get(sessionId)
+    if (!sock) throw new Error(`Sessão ${sessionId} não conectada`)
+
+    const result = new Map<string, boolean>()
+
+    const lidContacts = contacts.filter((c) => c.jid && c.jid.endsWith('@lid'))
+    for (const c of lidContacts) {
+      result.set(c.phone, true)
+    }
+
+    const phoneContacts = contacts.filter((c) => !c.jid || !c.jid.endsWith('@lid'))
+    if (phoneContacts.length === 0) return result
+
+    const BATCH = 50
+    for (let i = 0; i < phoneContacts.length; i += BATCH) {
+      const slice = phoneContacts.slice(i, i + BATCH)
+      const phones = slice.map((c) => c.phone)
+      try {
+        const checks = await sock.onWhatsApp(...phones)
+        const existsMap = new Map<string, boolean>()
+        for (const r of checks || []) {
+          const num = String(r.jid || '').split('@')[0].split(':')[0]
+          existsMap.set(num, !!r.exists)
+        }
+        for (const c of slice) {
+          result.set(c.phone, existsMap.get(c.phone) ?? false)
+        }
+      } catch (err) {
+        logger.warn({ sessionId, err: String(err) }, 'Falha em verifyContacts batch')
+        for (const c of slice) {
+          result.set(c.phone, false)
+        }
+      }
+      if (i + BATCH < phoneContacts.length) {
+        await new Promise((r) => setTimeout(r, 500))
+      }
+    }
+    return result
+  }
+
   async sendText(sessionId: string, phone: string, message: string): Promise<void> {
     const sock = this.sockets.get(sessionId)
     if (!sock) throw new Error(`Sessão ${sessionId} não conectada`)

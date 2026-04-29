@@ -113,6 +113,12 @@ export async function runMigrations() {
 
   await ensureColumn(db, 'contacts', 'jid', 'VARCHAR(100) NULL AFTER phone')
   await ensureColumnType(db, 'contacts', 'phone', 'VARCHAR(50) NOT NULL')
+  await ensureColumn(db, 'contacts', 'wa_exists', 'TINYINT(1) NULL DEFAULT NULL')
+  await ensureColumn(db, 'contacts', 'verified_at', 'TIMESTAMP NULL DEFAULT NULL')
+
+  await ensureColumn(db, 'campaigns', 'max_per_day', 'INT NOT NULL DEFAULT 0')
+  await ensureColumn(db, 'campaigns', 'daily_sent', 'INT NOT NULL DEFAULT 0')
+  await ensureColumn(db, 'campaigns', 'last_send_date', 'DATE NULL DEFAULT NULL')
 
   logger.info('Migração concluída com sucesso')
 }

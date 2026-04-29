@@ -23,6 +23,47 @@ export async function contactsRoutes(app: FastifyInstance) {
     return { list, contacts }
   })
 
+  app.post('/contacts/lists/:id/verify-numbers', { preHandler: [app.authenticate] }, async (req, reply) => {
+    const { id } = req.params as { id: string }
+    const { sessionId } = req.body as { sessionId: string }
+
+    if (!baileysService.isConnected(sessionId)) {
+      return reply.status(400).send({ error: 'Sessão não conectada' })
+    }
+
+    const list = await queryOne('SELECT id FROM contact_lists WHERE id = ?', [id])
+    if (!list) return reply.status(404).send({ error: 'Lista não encontrada' })
+
+    const contacts = await query<{ id: string; phone: string; jid: string | null }>(
+      'SELECT id, phone, jid FROM contacts WHERE list_id = ? AND wa_exists IS NULL',
+      [id],
+    )
+
+    if (contacts.length === 0) {
+      return { message: 'Todos os contatos já foram verificados', verified: 0 }
+    }
+
+    const resultMap = await baileysService.verifyContacts(sessionId, contacts)
+
+    let valid = 0
+    let invalid = 0
+    const BATCH = 200
+    const ids = contacts.map((c) => c.id)
+    for (let i = 0; i < ids.length; i += BATCH) {
+      const slice = contacts.slice(i, i + BATCH)
+      for (const c of slice) {
+        const exists = resultMap.get(c.phone) ? 1 : 0
+        if (exists) valid++; else invalid++
+        await query(
+          'UPDATE contacts SET wa_exists = ?, verified_at = NOW() WHERE id = ?',
+          [exists, c.id],
+        )
+      }
+    }
+
+    return { total: contacts.length, valid, invalid }
+  })
+
   app.delete('/contacts/lists/:id', { preHandler: [app.authenticate] }, async (req, reply) => {
     const { id } = req.params as { id: string }
     const list = await queryOne('SELECT id FROM contact_lists WHERE id = ?', [id])

@@ -3,10 +3,13 @@
 import { useEffect, useRef, useState } from 'react'
 import {
   Send, Plus, Pause, Play, Trash2, Loader2,
-  CheckCircle, XCircle, Clock, Upload,
+  CheckCircle, XCircle, Clock, Upload, Sparkles,
+  ListChecks, ShieldCheck, Eye,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { api } from '@/lib/api'
+import CampaignDetailsModal from './CampaignDetailsModal'
+import TestMessageModal from './TestMessageModal'
 
 interface Campaign {
   id: string
@@ -18,6 +21,10 @@ interface Campaign {
   ai_provider: string
   created_at: string
   list_name?: string
+  list_id?: string
+  max_per_day?: number
+  daily_sent?: number
+  session_ids?: string
 }
 
 interface Session { id: string; name: string; status: string }
@@ -30,12 +37,17 @@ export default function CampaignsPage() {
   const [lists, setLists] = useState<ContactList[]>([])
   const [aiConfigs, setAiConfigs] = useState<AIConfig[]>([])
   const [showForm, setShowForm] = useState(false)
+  const [showTestMsg, setShowTestMsg] = useState(false)
+  const [detailsCampaign, setDetailsCampaign] = useState<Campaign | null>(null)
   const [submitting, setSubmitting] = useState(false)
+  const [verifying, setVerifying] = useState<string | null>(null)
+  const [testSending, setTestSending] = useState<string | null>(null)
   const mediaRef = useRef<HTMLInputElement>(null)
 
   const [form, setForm] = useState({
     name: '', list_id: '', ai_provider: 'openai', ai_model: '',
     prompt: '', media_type: 'none', min_delay: '5', max_delay: '15',
+    max_per_day: '0',
     rotate_sessions: true, session_ids: [] as string[],
   })
 
@@ -107,7 +119,7 @@ export default function CampaignsPage() {
       await api.post('/campaigns', fd, { headers: { 'Content-Type': 'multipart/form-data' } })
       toast.success('Campanha iniciada!')
       setShowForm(false)
-      setForm({ name: '', list_id: '', ai_provider: 'openai', ai_model: '', prompt: '', media_type: 'none', min_delay: '5', max_delay: '15', rotate_sessions: true, session_ids: [] })
+      setForm({ name: '', list_id: '', ai_provider: 'openai', ai_model: '', prompt: '', media_type: 'none', min_delay: '5', max_delay: '15', max_per_day: '0', rotate_sessions: true, session_ids: [] })
       loadAll()
     } catch {
       toast.error('Erro ao criar campanha')
@@ -126,6 +138,41 @@ export default function CampaignsPage() {
     await api.post(`/campaigns/${id}/resume`)
     setCampaigns((prev) => prev.map((c) => c.id === id ? { ...c, status: 'running' } : c))
     toast.info('Campanha retomada')
+  }
+
+  const verifyNumbers = async (campaign: Campaign) => {
+    const sessionIds: string[] = JSON.parse(campaign.session_ids || '[]')
+    const conn = sessionIds.find((s) => sessions.find((x) => x.id === s && x.status === 'connected'))
+    if (!conn) return toast.error('Nenhuma sessão conectada para validar')
+    if (!campaign.list_id) return
+    setVerifying(campaign.id)
+    try {
+      const { data } = await api.post(`/contacts/lists/${campaign.list_id}/verify-numbers`, { sessionId: conn })
+      if (data.verified === 0 && data.message) {
+        toast.info(data.message)
+      } else {
+        toast.success(`${data.valid} válidos / ${data.invalid} inválidos de ${data.total}`)
+      }
+    } catch {
+      toast.error('Erro ao validar números')
+    } finally {
+      setVerifying(null)
+    }
+  }
+
+  const sendTestMessages = async (campaign: Campaign) => {
+    if (!confirm('Disparar 3 mensagens de teste agora?')) return
+    setTestSending(campaign.id)
+    try {
+      const { data } = await api.post(`/campaigns/${campaign.id}/test-send`, { count: 3 })
+      const sent = data.results?.filter((r: { status: string }) => r.status === 'sent').length || 0
+      const failed = data.results?.length - sent
+      toast.success(`Teste: ${sent} enviadas, ${failed} falharam`)
+    } catch {
+      toast.error('Erro no disparo de teste')
+    } finally {
+      setTestSending(null)
+    }
   }
 
   const deleteCampaign = async (id: string) => {
@@ -177,13 +224,26 @@ export default function CampaignsPage() {
                     {c.list_name} • {c.ai_provider.toUpperCase()} • {new Date(c.created_at).toLocaleDateString('pt-BR')}
                   </p>
                 </div>
-                <div className="flex gap-2">
+                <div className="flex flex-wrap gap-2">
+                  <button onClick={() => setDetailsCampaign(c)} className="flex items-center gap-1.5 px-3 py-1.5 text-sm bg-muted text-foreground rounded-xl hover:bg-muted/70 transition-colors">
+                    <Eye className="w-3.5 h-3.5" /> Detalhes
+                  </button>
+                  <button onClick={() => verifyNumbers(c)} disabled={verifying === c.id}
+                    className="flex items-center gap-1.5 px-3 py-1.5 text-sm bg-blue-500/10 text-blue-400 rounded-xl hover:bg-blue-500/20 transition-colors disabled:opacity-50">
+                    {verifying === c.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <ShieldCheck className="w-3.5 h-3.5" />}
+                    Validar números
+                  </button>
+                  <button onClick={() => sendTestMessages(c)} disabled={testSending === c.id}
+                    className="flex items-center gap-1.5 px-3 py-1.5 text-sm bg-purple-500/10 text-purple-400 rounded-xl hover:bg-purple-500/20 transition-colors disabled:opacity-50">
+                    {testSending === c.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <ListChecks className="w-3.5 h-3.5" />}
+                    Disparo teste
+                  </button>
                   {c.status === 'running' && (
                     <button onClick={() => pauseCampaign(c.id)} className="flex items-center gap-1.5 px-3 py-1.5 text-sm bg-orange-500/10 text-orange-400 rounded-xl hover:bg-orange-500/20 transition-colors">
                       <Pause className="w-3.5 h-3.5" /> Pausar
                     </button>
                   )}
-                  {c.status === 'paused' && (
+                  {(c.status === 'paused' || c.status === 'failed') && (
                     <button onClick={() => resumeCampaign(c.id)} className="flex items-center gap-1.5 px-3 py-1.5 text-sm bg-primary/10 text-primary rounded-xl hover:bg-primary/20 transition-colors">
                       <Play className="w-3.5 h-3.5" /> Retomar
                     </button>
@@ -250,6 +310,13 @@ export default function CampaignsPage() {
                   <input type="number" min="5" value={form.max_delay} onChange={(e) => setForm({ ...form, max_delay: e.target.value })}
                     className="w-full px-3 py-2.5 bg-muted border border-border rounded-xl text-foreground focus:outline-none focus:ring-2 focus:ring-primary" />
                 </div>
+                <div className="col-span-2">
+                  <label className="block text-sm text-muted-foreground mb-1.5">Máximo de disparos por dia <span className="text-xs">(0 = sem limite; ao atingir, pausa automaticamente)</span></label>
+                  <input type="number" min="0" value={form.max_per_day}
+                    onChange={(e) => setForm({ ...form, max_per_day: e.target.value })}
+                    placeholder="Ex: 100"
+                    className="w-full px-3 py-2.5 bg-muted border border-border rounded-xl text-foreground focus:outline-none focus:ring-2 focus:ring-primary" />
+                </div>
                 <div>
                   <label className="block text-sm text-muted-foreground mb-1.5">Tipo de mídia</label>
                   <select value={form.media_type} onChange={(e) => setForm({ ...form, media_type: e.target.value })}
@@ -297,8 +364,13 @@ export default function CampaignsPage() {
 
               <div className="flex gap-3 pt-2">
                 <button type="button" onClick={() => setShowForm(false)}
-                  className="flex-1 py-2.5 bg-muted rounded-xl text-sm font-medium hover:bg-muted/80 transition-colors">
+                  className="py-2.5 px-4 bg-muted rounded-xl text-sm font-medium hover:bg-muted/80 transition-colors">
                   Cancelar
+                </button>
+                <button type="button" onClick={() => setShowTestMsg(true)}
+                  disabled={!form.ai_provider || !form.prompt || !form.list_id}
+                  className="flex-1 py-2.5 bg-purple-500/10 text-purple-400 rounded-xl text-sm font-medium hover:bg-purple-500/20 disabled:opacity-50 transition-colors flex items-center justify-center gap-2">
+                  <Sparkles className="w-4 h-4" /> Testar mensagens
                 </button>
                 <button type="submit" disabled={submitting}
                   className="flex-1 py-2.5 bg-primary text-primary-foreground rounded-xl text-sm font-medium hover:bg-primary/90 disabled:opacity-50 transition-colors flex items-center justify-center gap-2">
@@ -309,6 +381,24 @@ export default function CampaignsPage() {
             </form>
           </div>
         </div>
+      )}
+
+      {showTestMsg && (
+        <TestMessageModal
+          ai_provider={form.ai_provider}
+          ai_model={form.ai_model}
+          prompt={form.prompt}
+          list_id={form.list_id}
+          onClose={() => setShowTestMsg(false)}
+        />
+      )}
+
+      {detailsCampaign && (
+        <CampaignDetailsModal
+          campaignId={detailsCampaign.id}
+          campaignName={detailsCampaign.name}
+          onClose={() => setDetailsCampaign(null)}
+        />
       )}
     </div>
   )

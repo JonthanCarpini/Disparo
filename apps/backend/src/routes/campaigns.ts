@@ -6,6 +6,8 @@ import { query, queryOne } from '../lib/db'
 import { campaignQueue } from '../workers/CampaignWorker'
 import { campaignWsEmitter } from '../lib/wsEmitter'
 import { logger } from '../lib/logger'
+import { generateMessage, AIProvider } from '../services/AIService'
+import { baileysService } from '../services/BaileysService'
 
 const UPLOADS_DIR = process.env.UPLOADS_DIR || '/app/data/uploads'
 
@@ -67,6 +69,7 @@ export async function campaignsRoutes(app: FastifyInstance) {
       media_type = 'none',
       min_delay = '5',
       max_delay = '15',
+      max_per_day = '0',
       rotate_sessions = 'true',
       session_ids,
       scheduled_at,
@@ -85,11 +88,12 @@ export async function campaignsRoutes(app: FastifyInstance) {
     await query(
       `INSERT INTO campaigns
         (id, name, list_id, ai_provider, ai_model, prompt, media_type, media_path,
-         min_delay, max_delay, rotate_sessions, session_ids, scheduled_at, total, status)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'draft')`,
+         min_delay, max_delay, max_per_day, rotate_sessions, session_ids, scheduled_at, total, status)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'draft')`,
       [
         id, name, list_id, ai_provider, ai_model || null, prompt,
         media_type, mediaPath, parseInt(min_delay), parseInt(max_delay),
+        parseInt(max_per_day) || 0,
         rotate_sessions === 'true' ? 1 : 0, session_ids,
         scheduled_at || null, listInfo?.total || 0,
       ],
@@ -118,6 +122,126 @@ export async function campaignsRoutes(app: FastifyInstance) {
     if (c.status !== 'paused') return reply.status(400).send({ error: 'Campanha não está pausada' })
     await startCampaign(id)
     return { message: 'Campanha retomada' }
+  })
+
+  app.post('/campaigns/test-message', { preHandler: [app.authenticate] }, async (req, reply) => {
+    const { ai_provider, ai_model, prompt, list_id, count = 3 } = req.body as {
+      ai_provider: AIProvider
+      ai_model?: string
+      prompt: string
+      list_id: string
+      count?: number
+    }
+
+    if (!ai_provider || !prompt || !list_id) {
+      return reply.status(400).send({ error: 'ai_provider, prompt e list_id são obrigatórios' })
+    }
+
+    const sample = await query<{ phone: string; name: string | null }>(
+      'SELECT phone, name FROM contacts WHERE list_id = ? ORDER BY RAND() LIMIT ?',
+      [list_id, Math.min(Math.max(count, 1), 5)],
+    )
+    if (sample.length === 0) return reply.status(404).send({ error: 'Lista vazia' })
+
+    const previews = []
+    for (const c of sample) {
+      try {
+        const message = await generateMessage(ai_provider, prompt, c.name || '', c.phone, ai_model || undefined)
+        previews.push({ phone: c.phone, name: c.name, message })
+      } catch (err) {
+        previews.push({ phone: c.phone, name: c.name, error: String(err) })
+      }
+    }
+    return { previews }
+  })
+
+  app.post('/campaigns/:id/test-send', { preHandler: [app.authenticate] }, async (req, reply) => {
+    const { id } = req.params as { id: string }
+    const { count = 3 } = (req.body || {}) as { count?: number }
+
+    const campaign = await queryOne<{
+      id: string
+      list_id: string
+      ai_provider: AIProvider
+      ai_model: string | null
+      prompt: string
+      session_ids: string
+    }>('SELECT id, list_id, ai_provider, ai_model, prompt, session_ids FROM campaigns WHERE id = ?', [id])
+    if (!campaign) return reply.status(404).send({ error: 'Campanha não encontrada' })
+
+    const sessionIds: string[] = JSON.parse(campaign.session_ids || '[]')
+    const sessionId = sessionIds.find((s) => baileysService.isConnected(s))
+    if (!sessionId) return reply.status(400).send({ error: 'Nenhuma sessão conectada' })
+
+    const sample = await query<{ id: string; phone: string; jid: string | null; name: string | null }>(
+      'SELECT id, phone, jid, name FROM contacts WHERE list_id = ? ORDER BY RAND() LIMIT ?',
+      [campaign.list_id, Math.min(Math.max(count, 1), 10)],
+    )
+
+    const results = []
+    for (const c of sample) {
+      try {
+        const message = await generateMessage(
+          campaign.ai_provider, campaign.prompt, c.name || '', c.phone, campaign.ai_model || undefined,
+        )
+        const target = c.jid || c.phone
+        await baileysService.sendText(sessionId, target, message)
+        results.push({ phone: c.phone, status: 'sent', message })
+      } catch (err) {
+        results.push({ phone: c.phone, status: 'failed', error: String(err) })
+      }
+      await new Promise((r) => setTimeout(r, 2000))
+    }
+    return { results }
+  })
+
+  app.get('/campaigns/:id/contacts-status', { preHandler: [app.authenticate] }, async (req) => {
+    const { id } = req.params as { id: string }
+    const { page = '1', limit = '50', status } = req.query as {
+      page?: string; limit?: string; status?: string
+    }
+    const offset = (parseInt(page) - 1) * parseInt(limit)
+
+    const campaign = await queryOne<{ list_id: string }>('SELECT list_id FROM campaigns WHERE id = ?', [id])
+    if (!campaign) return { contacts: [], totals: null }
+
+    const baseFilter = status === 'aguardando' ? 'AND cl.id IS NULL'
+      : status === 'sent' ? "AND cl.status = 'sent'"
+      : status === 'failed' ? "AND cl.status = 'failed'"
+      : ''
+
+    const rows = await query<{
+      contact_id: string; phone: string; name: string | null; jid: string | null;
+      status: string | null; sent_at: string | null; error: string | null
+    }>(
+      `SELECT c.id AS contact_id, c.phone, c.name, c.jid,
+              COALESCE(cl.status, 'aguardando') AS status,
+              cl.sent_at, cl.error
+       FROM contacts c
+       LEFT JOIN (
+         SELECT contact_id, status, sent_at, error,
+                ROW_NUMBER() OVER (PARTITION BY contact_id ORDER BY created_at DESC) AS rn
+         FROM campaign_logs WHERE campaign_id = ?
+       ) cl ON cl.contact_id = c.id AND cl.rn = 1
+       WHERE c.list_id = ? ${baseFilter}
+       ORDER BY c.created_at
+       LIMIT ? OFFSET ?`,
+      [id, campaign.list_id, parseInt(limit), offset],
+    )
+
+    const totals = await queryOne<{
+      total: number; sent: number; failed: number; aguardando: number
+    }>(
+      `SELECT
+         (SELECT COUNT(*) FROM contacts WHERE list_id = ?) AS total,
+         (SELECT COUNT(DISTINCT contact_id) FROM campaign_logs WHERE campaign_id = ? AND status = 'sent') AS sent,
+         (SELECT COUNT(DISTINCT contact_id) FROM campaign_logs WHERE campaign_id = ? AND status = 'failed') AS failed,
+         (SELECT COUNT(*) FROM contacts WHERE list_id = ?) -
+         (SELECT COUNT(DISTINCT contact_id) FROM campaign_logs WHERE campaign_id = ?) AS aguardando`,
+      [campaign.list_id, id, id, campaign.list_id, id],
+    )
+
+    return { contacts: rows, totals }
   })
 
   app.delete('/campaigns/:id', { preHandler: [app.authenticate] }, async (req, reply) => {

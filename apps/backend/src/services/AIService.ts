@@ -20,6 +20,7 @@ export async function generateMessage(
   prompt: string,
   contactName: string,
   contactPhone: string,
+  modelOverride?: string,
 ): Promise<string> {
   const config = await queryOne<AIConfig>(
     'SELECT provider, api_key, model FROM ai_configs WHERE provider = ? AND enabled = 1',
@@ -30,7 +31,7 @@ export async function generateMessage(
     throw new Error(`Provedor de IA "${provider}" não configurado ou desativado`)
   }
 
-  const model = config.model || DEFAULT_MODELS[provider]
+  const model = modelOverride || config.model || DEFAULT_MODELS[provider]
   const systemPrompt = `Você é um assistente de vendas/marketing. Gere uma mensagem ÚNICA e PERSONALIZADA para WhatsApp.
 REGRAS IMPORTANTES:
 - A mensagem deve ser diferente de qualquer mensagem anterior
