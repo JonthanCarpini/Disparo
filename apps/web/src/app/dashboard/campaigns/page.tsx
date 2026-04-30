@@ -85,7 +85,15 @@ export default function CampaignsPage() {
     setCampaigns(c.data)
     setSessions(s.data)
     setLists(l.data)
-    setAiConfigs(a.data.filter((x: AIConfig) => x.enabled))
+    const enabledConfigs: AIConfig[] = a.data.filter((x: AIConfig) => x.enabled)
+    setAiConfigs(enabledConfigs)
+    setForm((prev) => {
+      const available = enabledConfigs.find((cfg) => cfg.provider === prev.ai_provider)
+      if (!available && enabledConfigs.length > 0) {
+        return { ...prev, ai_provider: enabledConfigs[0].provider }
+      }
+      return prev
+    })
   }
 
   const toggleSession = (id: string) => {
@@ -119,7 +127,7 @@ export default function CampaignsPage() {
       await api.post('/campaigns', fd, { headers: { 'Content-Type': 'multipart/form-data' } })
       toast.success('Campanha iniciada!')
       setShowForm(false)
-      setForm({ name: '', list_id: '', ai_provider: 'openai', ai_model: '', prompt: '', media_type: 'none', min_delay: '5', max_delay: '15', max_per_day: '0', rotate_sessions: true, session_ids: [] })
+      setForm({ name: '', list_id: '', ai_provider: aiConfigs[0]?.provider || 'openai', ai_model: '', prompt: '', media_type: 'none', min_delay: '5', max_delay: '15', max_per_day: '0', rotate_sessions: true, session_ids: [] })
       loadAll()
     } catch {
       toast.error('Erro ao criar campanha')
