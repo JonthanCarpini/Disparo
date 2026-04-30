@@ -76,6 +76,20 @@ Gere a mensagem seguindo o formato acima:`
   }
 }
 
+export async function testProviderKey(
+  provider: AIProvider,
+  apiKey: string,
+  modelOverride?: string,
+): Promise<string> {
+  const model = modelOverride || DEFAULT_MODELS[provider]
+  const system = 'Você é um assistente de teste.'
+  const user = 'Responda apenas: "Conexão OK"'
+  if (provider === 'openai') return generateOpenAI(apiKey, model, system, user)
+  if (provider === 'gemini') return generateGemini(apiKey, model, system, user)
+  if (provider === 'mistral') return generateMistral(apiKey, model, system, user)
+  return generateGroq(apiKey, model, system, user)
+}
+
 async function generateMistral(
   apiKey: string,
   model: string,

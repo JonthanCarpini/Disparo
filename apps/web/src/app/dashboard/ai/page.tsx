@@ -56,6 +56,8 @@ export default function AIPage() {
   const [newKey, setNewKey] = useState<Record<string, { label: string; api_key: string }>>({})
   const [addingKey, setAddingKey] = useState<Record<string, boolean>>({})
   const [showNewKeyInput, setShowNewKeyInput] = useState<Record<string, boolean>>({})
+  const [testingKeyId, setTestingKeyId] = useState<number | null>(null)
+  const [keyTestResult, setKeyTestResult] = useState<Record<number, { ok: boolean; msg: string }>>({})
 
   useEffect(() => {
     api.get('/ai/configs').then((r) => {
@@ -105,6 +107,22 @@ export default function AIPage() {
   const handleToggleKey = async (provider: string, key: ProviderKey) => {
     await api.put(`/ai/keys/${provider}/${key.id}`, { enabled: !key.enabled })
     await loadProviderKeys(provider)
+  }
+
+  const handleTestKey = async (provider: string, key: ProviderKey) => {
+    setTestingKeyId(key.id)
+    setKeyTestResult((prev) => ({ ...prev, [key.id]: { ok: false, msg: '' } }))
+    try {
+      const res = await api.post(`/ai/keys/${provider}/${key.id}/test`)
+      setKeyTestResult((prev) => ({ ...prev, [key.id]: { ok: true, msg: res.data.message } }))
+      toast.success(`${key.label}: chave válida!`)
+    } catch (err: unknown) {
+      const msg = (err as { response?: { data?: { error?: string } } })?.response?.data?.error || 'Erro ao testar'
+      setKeyTestResult((prev) => ({ ...prev, [key.id]: { ok: false, msg } }))
+      toast.error(`${key.label}: ${msg}`)
+    } finally {
+      setTestingKeyId(null)
+    }
   }
 
   const handleSave = async (provider: string) => {
@@ -273,24 +291,41 @@ export default function AIPage() {
                     {keys.length > 0 && (
                       <div className="space-y-2 mt-3">
                         {keys.map((k) => (
-                          <div key={k.id} className="flex items-center gap-3 p-3 bg-muted/50 border border-border rounded-xl">
-                            <Key className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
-                            <div className="flex-1 min-w-0">
-                              <p className="text-sm font-medium text-foreground">{k.label}</p>
-                              <p className="text-xs text-muted-foreground font-mono">{k.api_key_preview}</p>
+                          <div key={k.id} className="bg-muted/50 border border-border rounded-xl overflow-hidden">
+                            <div className="flex items-center gap-3 p-3">
+                              <Key className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
+                              <div className="flex-1 min-w-0">
+                                <p className="text-sm font-medium text-foreground">{k.label}</p>
+                                <p className="text-xs text-muted-foreground font-mono">{k.api_key_preview}</p>
+                              </div>
+                              <button
+                                onClick={() => handleTestKey(provider, k)}
+                                disabled={testingKeyId === k.id}
+                                title="Testar chave"
+                                className="p-1.5 text-muted-foreground hover:text-blue-400 transition-colors shrink-0 disabled:opacity-50"
+                              >
+                                {testingKeyId === k.id
+                                  ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                  : <TestTube2 className="w-3.5 h-3.5" />}
+                              </button>
+                              <div
+                                onClick={() => handleToggleKey(provider, k)}
+                                className={`relative w-8 h-4 rounded-full transition-colors cursor-pointer shrink-0 ${!!k.enabled ? 'bg-primary' : 'bg-muted border border-border'}`}
+                              >
+                                <div className={`absolute top-0.5 w-3 h-3 bg-white rounded-full transition-all ${!!k.enabled ? 'left-4' : 'left-0.5'}`} />
+                              </div>
+                              <button
+                                onClick={() => handleDeleteKey(provider, k.id)}
+                                className="p-1.5 text-muted-foreground hover:text-destructive transition-colors shrink-0"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
                             </div>
-                            <div
-                              onClick={() => handleToggleKey(provider, k)}
-                              className={`relative w-8 h-4 rounded-full transition-colors cursor-pointer shrink-0 ${!!k.enabled ? 'bg-primary' : 'bg-muted border border-border'}`}
-                            >
-                              <div className={`absolute top-0.5 w-3 h-3 bg-white rounded-full transition-all ${!!k.enabled ? 'left-4' : 'left-0.5'}`} />
-                            </div>
-                            <button
-                              onClick={() => handleDeleteKey(provider, k.id)}
-                              className="p-1.5 text-muted-foreground hover:text-destructive transition-colors shrink-0"
-                            >
-                              <Trash2 className="w-3.5 h-3.5" />
-                            </button>
+                            {keyTestResult[k.id]?.msg && (
+                              <div className={`px-3 py-2 text-xs border-t border-border ${keyTestResult[k.id].ok ? 'text-primary bg-primary/5' : 'text-destructive bg-destructive/5'}`}>
+                                {keyTestResult[k.id].ok ? '✓ ' : '✗ '}{keyTestResult[k.id].msg}
+                              </div>
+                            )}
                           </div>
                         ))}
                       </div>

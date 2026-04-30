@@ -113,6 +113,25 @@ export async function aiRoutes(app: FastifyInstance) {
     return { message: 'Chave removida' }
   })
 
+  app.post('/ai/keys/:provider/:id/test', { preHandler: [app.authenticate] }, async (req, reply) => {
+    const { provider, id } = req.params as { provider: string; id: string }
+    if (!PROVIDERS.includes(provider as never)) {
+      return reply.status(400).send({ error: 'Provedor inválido' })
+    }
+    const key = await queryOne<{ api_key: string }>(
+      'SELECT api_key FROM ai_provider_keys WHERE id = ? AND provider = ?',
+      [parseInt(id), provider],
+    )
+    if (!key) return reply.status(404).send({ error: 'Chave não encontrada' })
+    const { testProviderKey } = await import('../services/AIService')
+    try {
+      const message = await testProviderKey(provider as 'openai' | 'gemini' | 'groq' | 'mistral', key.api_key)
+      return { message }
+    } catch (err) {
+      return reply.status(500).send({ error: err instanceof Error ? err.message : String(err) })
+    }
+  })
+
   app.get('/ai/models', { preHandler: [app.authenticate] }, async () => {
     return {
       openai: ['gpt-4o', 'gpt-4o-mini', 'gpt-4-turbo', 'gpt-3.5-turbo'],
