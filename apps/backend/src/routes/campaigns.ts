@@ -137,9 +137,10 @@ export async function campaignsRoutes(app: FastifyInstance) {
       return reply.status(400).send({ error: 'ai_provider, prompt e list_id são obrigatórios' })
     }
 
+    const limitVal = Math.min(Math.max(Math.trunc(Number(count) || 1), 1), 5)
     const sample = await query<{ phone: string; name: string | null }>(
-      'SELECT phone, name FROM contacts WHERE list_id = ? ORDER BY RAND() LIMIT ?',
-      [list_id, Math.min(Math.max(count, 1), 5)],
+      `SELECT phone, name FROM contacts WHERE list_id = ? ORDER BY RAND() LIMIT ${limitVal}`,
+      [list_id],
     )
     if (sample.length === 0) return reply.status(404).send({ error: 'Lista vazia' })
 
