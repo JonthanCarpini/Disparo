@@ -120,7 +120,9 @@ export async function campaignsRoutes(app: FastifyInstance) {
     const { id } = req.params as { id: string }
     const c = await queryOne<{ status: string }>('SELECT status FROM campaigns WHERE id = ?', [id])
     if (!c) return reply.status(404).send({ error: 'Campanha não encontrada' })
-    if (c.status !== 'paused') return reply.status(400).send({ error: 'Campanha não está pausada' })
+    if (c.status !== 'paused' && c.status !== 'failed') {
+      return reply.status(400).send({ error: 'Campanha não pode ser retomada (status atual: ' + c.status + ')' })
+    }
     await startCampaign(id)
     return { message: 'Campanha retomada' }
   })
