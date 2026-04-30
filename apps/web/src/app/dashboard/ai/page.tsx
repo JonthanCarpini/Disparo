@@ -57,7 +57,7 @@ export default function AIPage() {
       await api.put(`/ai/configs/${provider}`, {
         api_key: apiKeys[provider] || undefined,
         model: configs[provider]?.model || undefined,
-        enabled: configs[provider]?.enabled !== 0,
+        enabled: !!configs[provider]?.enabled,
       })
       toast.success(`Configuração do ${PROVIDER_INFO[provider].label} salva!`)
       const res = await api.get('/ai/configs')
@@ -97,7 +97,7 @@ export default function AIPage() {
       <div className="space-y-6">
         {Object.entries(PROVIDER_INFO).map(([provider, info]) => {
           const config = configs[provider]
-          const enabled = config?.enabled !== 0
+          const enabled = !!config?.enabled
           return (
             <div key={provider} className="bg-card border border-border rounded-2xl p-6">
               <div className="flex items-center justify-between mb-5">
