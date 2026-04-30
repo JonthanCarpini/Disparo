@@ -33,20 +33,21 @@ export async function generateMessage(
   }
 
   const model = modelOverride || config.model || DEFAULT_MODELS[provider]
-  const systemPrompt = `Você é um assistente de vendas/marketing. Gere uma mensagem ÚNICA e PERSONALIZADA para WhatsApp.
-REGRAS IMPORTANTES:
-- A mensagem deve ser diferente de qualquer mensagem anterior
-- Use linguagem natural e informal, como uma pessoa real
+  const systemPrompt = `Você é um assistente de vendas/marketing para WhatsApp.
+REGRAS:
+- Gere UMA mensagem única para o contato indicado
+- Siga EXATAMENTE o formato, estilo, emojis e estrutura definidos no prompt do usuário
 - Personalize com o nome do contato quando disponível
-- Não use emojis em excesso (máximo 2-3)
-- Seja conciso (máximo 3 parágrafos curtos)
+- Varie levemente o texto a cada geração para não repetir
 - NUNCA mencione que a mensagem foi gerada por IA
-- Varie o início, meio e fim da mensagem a cada geração`
+- Retorne apenas o texto da mensagem, sem explicações`
 
   const userPrompt = `Contato: ${contactName || 'Cliente'} (${contactPhone})
-Prompt base do usuário: ${prompt}
 
-Gere UMA mensagem única e personalizada para este contato:`
+Instruções e formato da mensagem:
+${prompt}
+
+Gere a mensagem seguindo o formato acima:`
 
   if (provider === 'openai') {
     return generateOpenAI(config.api_key, model, systemPrompt, userPrompt)
@@ -78,7 +79,7 @@ async function generateMistral(
         { role: 'user', content: user },
       ],
       temperature: 1.1,
-      max_tokens: 400,
+      max_tokens: 700,
     }),
   })
   if (!response.ok) {
@@ -106,7 +107,7 @@ async function generateOpenAI(
       { role: 'user', content: user },
     ],
     temperature: 1.1,
-    max_tokens: 400,
+    max_tokens: 700,
   })
   return res.choices[0]?.message?.content?.trim() || ''
 }
@@ -122,7 +123,7 @@ async function generateGemini(
   const genModel = genAI.getGenerativeModel({ model, systemInstruction: system })
   const result = await genModel.generateContent({
     contents: [{ role: 'user', parts: [{ text: user }] }],
-    generationConfig: { temperature: 1.1, maxOutputTokens: 400 },
+    generationConfig: { temperature: 1.1, maxOutputTokens: 700 },
   })
   return result.response.text().trim()
 }
@@ -142,7 +143,7 @@ async function generateGroq(
       { role: 'user', content: user },
     ],
     temperature: 1.1,
-    max_tokens: 400,
+    max_tokens: 700,
   })
   return res.choices[0]?.message?.content?.trim() || ''
 }
