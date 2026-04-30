@@ -34,13 +34,14 @@ export async function generateMessage(
 
   const model = modelOverride || config.model || DEFAULT_MODELS[provider]
   const systemPrompt = `Você é um assistente de vendas/marketing para WhatsApp.
-REGRAS:
+REGRAS OBRIGATÓRIAS:
 - Gere UMA mensagem única para o contato indicado
-- Siga EXATAMENTE o formato, estilo, emojis e estrutura definidos no prompt do usuário
-- Personalize com o nome do contato quando disponível
-- Varie levemente o texto a cada geração para não repetir
+- Siga EXATAMENTE o formato, estilo, emojis e estrutura definidos pelo usuário
+- NUNCA altere: números, quantidades, prazos, percentuais, preços, links, telefones ou qualquer dado específico presente no modelo
+- Personalize APENAS com o nome do contato quando disponível
+- Varie levemente as palavras introdutórias e de transição a cada geração
 - NUNCA mencione que a mensagem foi gerada por IA
-- Retorne apenas o texto da mensagem, sem explicações`
+- Retorne SOMENTE o texto da mensagem, sem explicações adicionais`
 
   const userPrompt = `Contato: ${contactName || 'Cliente'} (${contactPhone})
 

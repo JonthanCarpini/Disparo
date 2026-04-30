@@ -4,8 +4,64 @@ import { useEffect, useRef, useState } from 'react'
 import {
   Send, Plus, Pause, Play, Trash2, Loader2,
   CheckCircle, XCircle, Clock, Upload, Sparkles,
-  ListChecks, ShieldCheck, Eye,
+  ListChecks, ShieldCheck, Eye, FileText, ChevronDown,
 } from 'lucide-react'
+
+const PREDEFINED_PROMPTS: { label: string; prompt: string }[] = [
+  {
+    label: 'IPTV — Teste grátis 4h',
+    prompt: `Gere uma mensagem seguindo EXATAMENTE o formato abaixo. NÃO altere números, prazos, quantidades, links nem telefones. Varie apenas as palavras introdutórias e personalize com o nome do contato quando disponível:
+
+📺✨ Solicite agora seu TESTE IPTV GRÁTIS por 4 horas!
+
+Tenha acesso a uma lista completa com mais de 150 MIL conteúdos, incluindo:
+🔥 Canais premium ao vivo
+🎬 Filmes recém-saídos do cinema
+📺 Séries em alta
+👶 Conteúdo infantil
+
+Compatível com todos os dispositivos:
+✔️ Smart TVs
+✔️ TV Box
+✔️ Celulares
+✔️ Tablets
+✔️ Computadores
+
+Não perca tempo! Experimente agora e descubra a melhor experiência em entretenimento 🚀
+
+📲 Canal oficial:
+WhatsApp 32-99841-4995`,
+  },
+  {
+    label: 'Promoção genérica de produto',
+    prompt: `Gere uma mensagem de oferta para WhatsApp seguindo EXATAMENTE o formato abaixo. NÃO altere números, percentuais, preços, prazos nem contatos. Varie apenas as frases introdutórias e personalize com o nome do contato:
+
+🎉 OFERTA ESPECIAL — Só hoje!
+
+[Descreva o produto/serviço aqui]
+
+✅ Vantagem 1
+✅ Vantagem 2
+✅ Vantagem 3
+
+⏰ Oferta válida por 24 horas
+💬 Fale agora: [seu contato]`,
+  },
+  {
+    label: 'Agendamento / Serviço local',
+    prompt: `Gere uma mensagem de WhatsApp convidando para agendamento. NÃO altere telefones, endereços nem horários informados. Personalize com o nome do contato quando disponível e varie o texto introdutório:
+
+👋 Olá! Temos uma novidade especial para você.
+
+[Descreva o serviço aqui]
+
+🕐 Horários disponíveis: [horários]
+📍 Endereço: [endereço]
+📲 Agende agora: [telefone]
+
+Vagas limitadas! Reserve a sua 😊`,
+  },
+]
 import { toast } from 'sonner'
 import { api } from '@/lib/api'
 import CampaignDetailsModal from './CampaignDetailsModal'
@@ -42,6 +98,7 @@ export default function CampaignsPage() {
   const [submitting, setSubmitting] = useState(false)
   const [verifying, setVerifying] = useState<string | null>(null)
   const [testSending, setTestSending] = useState<string | null>(null)
+  const [showPresets, setShowPresets] = useState(false)
   const mediaRef = useRef<HTMLInputElement>(null)
 
   const [form, setForm] = useState({
@@ -351,9 +408,39 @@ export default function CampaignsPage() {
               )}
 
               <div className="col-span-2">
-                <label className="block text-sm text-muted-foreground mb-1.5">Prompt para IA * <span className="text-xs">(instrução de como gerar as mensagens)</span></label>
-                <textarea value={form.prompt} onChange={(e) => setForm({ ...form, prompt: e.target.value })} required rows={4}
-                  placeholder="Ex: Você é um vendedor de planos de TV por assinatura. Crie uma mensagem convidando o cliente para conhecer nossos planos premium, mencione o nome do contato de forma natural..."
+                <div className="flex items-center justify-between mb-1.5">
+                  <label className="text-sm text-muted-foreground">Prompt para IA * <span className="text-xs">(instrução de como gerar as mensagens)</span></label>
+                  <div className="relative">
+                    <button
+                      type="button"
+                      onClick={() => setShowPresets((v) => !v)}
+                      className="flex items-center gap-1.5 px-3 py-1 bg-muted border border-border rounded-lg text-xs text-muted-foreground hover:bg-muted/70 transition-colors"
+                    >
+                      <FileText className="w-3.5 h-3.5" />
+                      Prompt predefinido
+                      <ChevronDown className={`w-3 h-3 transition-transform ${showPresets ? 'rotate-180' : ''}`} />
+                    </button>
+                    {showPresets && (
+                      <div className="absolute right-0 top-full mt-1 z-10 bg-card border border-border rounded-xl shadow-lg w-64 overflow-hidden">
+                        {PREDEFINED_PROMPTS.map((p) => (
+                          <button
+                            key={p.label}
+                            type="button"
+                            onClick={() => {
+                              setForm((prev) => ({ ...prev, prompt: p.prompt }))
+                              setShowPresets(false)
+                            }}
+                            className="w-full text-left px-4 py-2.5 text-sm text-foreground hover:bg-muted transition-colors border-b border-border last:border-0"
+                          >
+                            {p.label}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
+                <textarea value={form.prompt} onChange={(e) => setForm({ ...form, prompt: e.target.value })} required rows={6}
+                  placeholder="Cole aqui o modelo de mensagem ou use um prompt predefinido acima..."
                   className="w-full px-3 py-2.5 bg-muted border border-border rounded-xl text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary resize-none" />
               </div>
 
