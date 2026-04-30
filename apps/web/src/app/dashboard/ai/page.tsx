@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { Bot, Save, TestTube2, Loader2, Eye, EyeOff } from 'lucide-react'
+import { Bot, Save, TestTube2, Loader2, Eye, EyeOff, Plus, Trash2, ChevronDown, Key, RotateCcw } from 'lucide-react'
 import { toast } from 'sonner'
 import { api } from '@/lib/api'
 
@@ -10,6 +10,14 @@ interface AIConfig {
   model: string | null
   enabled: number
   api_key?: string
+}
+
+interface ProviderKey {
+  id: number
+  label: string
+  api_key_preview: string
+  enabled: number
+  created_at: string
 }
 
 const MODELS: Record<string, string[]> = {
@@ -43,6 +51,12 @@ export default function AIPage() {
   const [testing, setTesting] = useState<Record<string, boolean>>({})
   const [testResults, setTestResults] = useState<Record<string, string>>({})
 
+  const [providerKeys, setProviderKeys] = useState<Record<string, ProviderKey[]>>({})
+  const [showMultiKeys, setShowMultiKeys] = useState<Record<string, boolean>>({})
+  const [newKey, setNewKey] = useState<Record<string, { label: string; api_key: string }>>({})
+  const [addingKey, setAddingKey] = useState<Record<string, boolean>>({})
+  const [showNewKeyInput, setShowNewKeyInput] = useState<Record<string, boolean>>({})
+
   useEffect(() => {
     api.get('/ai/configs').then((r) => {
       const map: Record<string, AIConfig> = {}
@@ -50,6 +64,48 @@ export default function AIPage() {
       setConfigs(map)
     })
   }, [])
+
+  const loadProviderKeys = async (provider: string) => {
+    const r = await api.get(`/ai/keys/${provider}`)
+    setProviderKeys((prev) => ({ ...prev, [provider]: r.data }))
+  }
+
+  const toggleMultiKeys = async (provider: string) => {
+    const next = !showMultiKeys[provider]
+    setShowMultiKeys((prev) => ({ ...prev, [provider]: next }))
+    if (next && !providerKeys[provider]) {
+      await loadProviderKeys(provider)
+    }
+  }
+
+  const handleAddKey = async (provider: string) => {
+    const k = newKey[provider]
+    if (!k?.api_key) return toast.error('Informe a chave API')
+    setAddingKey((prev) => ({ ...prev, [provider]: true }))
+    try {
+      await api.post(`/ai/keys/${provider}`, { api_key: k.api_key, label: k.label || undefined })
+      toast.success('Chave adicionada!')
+      setNewKey((prev) => ({ ...prev, [provider]: { label: '', api_key: '' } }))
+      setShowNewKeyInput((prev) => ({ ...prev, [provider]: false }))
+      await loadProviderKeys(provider)
+    } catch {
+      toast.error('Erro ao adicionar chave')
+    } finally {
+      setAddingKey((prev) => ({ ...prev, [provider]: false }))
+    }
+  }
+
+  const handleDeleteKey = async (provider: string, id: number) => {
+    if (!confirm('Remover esta chave?')) return
+    await api.delete(`/ai/keys/${provider}/${id}`)
+    toast.success('Chave removida')
+    await loadProviderKeys(provider)
+  }
+
+  const handleToggleKey = async (provider: string, key: ProviderKey) => {
+    await api.put(`/ai/keys/${provider}/${key.id}`, { enabled: !key.enabled })
+    await loadProviderKeys(provider)
+  }
 
   const handleSave = async (provider: string) => {
     setSaving({ ...saving, [provider]: true })
@@ -98,6 +154,9 @@ export default function AIPage() {
         {Object.entries(PROVIDER_INFO).map(([provider, info]) => {
           const config = configs[provider]
           const enabled = !!config?.enabled
+          const keys = providerKeys[provider] ?? []
+          const keyCount = keys.length
+
           return (
             <div key={provider} className="bg-card border border-border rounded-2xl p-6">
               <div className="flex items-center justify-between mb-5">
@@ -126,7 +185,7 @@ export default function AIPage() {
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
                 <div>
-                  <label className="block text-sm text-muted-foreground mb-1.5">API Key</label>
+                  <label className="block text-sm text-muted-foreground mb-1.5">API Key principal</label>
                   <div className="relative">
                     <input
                       type={showKeys[provider] ? 'text' : 'password'}
@@ -162,7 +221,7 @@ export default function AIPage() {
                 </div>
               </div>
 
-              <div className="flex gap-3">
+              <div className="flex gap-3 mb-4">
                 <button
                   onClick={() => handleSave(provider)}
                   disabled={saving[provider]}
@@ -184,11 +243,103 @@ export default function AIPage() {
               </div>
 
               {testResults[provider] && (
-                <div className={`mt-4 p-3 rounded-xl text-sm ${testResults[provider].startsWith('Erro') ? 'bg-destructive/10 text-destructive' : 'bg-primary/10 text-foreground'}`}>
+                <div className={`mb-4 p-3 rounded-xl text-sm ${testResults[provider].startsWith('Erro') ? 'bg-destructive/10 text-destructive' : 'bg-primary/10 text-foreground'}`}>
                   <p className="font-medium mb-1">{testResults[provider].startsWith('Erro') ? '❌ Erro' : '✅ Resultado'}</p>
                   <p className="text-muted-foreground">{testResults[provider]}</p>
                 </div>
               )}
+
+              {/* Seção de múltiplas chaves para rodízio */}
+              <div className="border-t border-border pt-4">
+                <button
+                  type="button"
+                  onClick={() => toggleMultiKeys(provider)}
+                  className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors w-full"
+                >
+                  <RotateCcw className="w-3.5 h-3.5" />
+                  <span>Chaves adicionais para rodízio</span>
+                  {keyCount > 0 && (
+                    <span className="ml-1 px-1.5 py-0.5 bg-primary/20 text-primary text-xs rounded-full">{keyCount}</span>
+                  )}
+                  <ChevronDown className={`w-3.5 h-3.5 ml-auto transition-transform ${showMultiKeys[provider] ? 'rotate-180' : ''}`} />
+                </button>
+
+                {showMultiKeys[provider] && (
+                  <div className="mt-3 space-y-2">
+                    <p className="text-xs text-muted-foreground">
+                      Adicione múltiplas chaves API para rodízio automático — ideal para evitar limite de tokens por hora. As chaves abaixo são usadas em ordem circular junto com a chave principal.
+                    </p>
+
+                    {keys.length > 0 && (
+                      <div className="space-y-2 mt-3">
+                        {keys.map((k) => (
+                          <div key={k.id} className="flex items-center gap-3 p-3 bg-muted/50 border border-border rounded-xl">
+                            <Key className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
+                            <div className="flex-1 min-w-0">
+                              <p className="text-sm font-medium text-foreground">{k.label}</p>
+                              <p className="text-xs text-muted-foreground font-mono">{k.api_key_preview}</p>
+                            </div>
+                            <div
+                              onClick={() => handleToggleKey(provider, k)}
+                              className={`relative w-8 h-4 rounded-full transition-colors cursor-pointer shrink-0 ${!!k.enabled ? 'bg-primary' : 'bg-muted border border-border'}`}
+                            >
+                              <div className={`absolute top-0.5 w-3 h-3 bg-white rounded-full transition-all ${!!k.enabled ? 'left-4' : 'left-0.5'}`} />
+                            </div>
+                            <button
+                              onClick={() => handleDeleteKey(provider, k.id)}
+                              className="p-1.5 text-muted-foreground hover:text-destructive transition-colors shrink-0"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
+                    {showNewKeyInput[provider] ? (
+                      <div className="mt-3 p-3 bg-muted/30 border border-border rounded-xl space-y-2">
+                        <input
+                          type="text"
+                          placeholder="Nome da conta (ex: Conta 2)"
+                          value={newKey[provider]?.label || ''}
+                          onChange={(e) => setNewKey((prev) => ({ ...prev, [provider]: { ...prev[provider], label: e.target.value } }))}
+                          className="w-full px-3 py-2 bg-muted border border-border rounded-lg text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary"
+                        />
+                        <input
+                          type="password"
+                          placeholder="Chave API"
+                          value={newKey[provider]?.api_key || ''}
+                          onChange={(e) => setNewKey((prev) => ({ ...prev, [provider]: { ...prev[provider], api_key: e.target.value } }))}
+                          className="w-full px-3 py-2 bg-muted border border-border rounded-lg text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary"
+                        />
+                        <div className="flex gap-2">
+                          <button
+                            onClick={() => handleAddKey(provider)}
+                            disabled={addingKey[provider]}
+                            className="flex items-center gap-1.5 px-3 py-1.5 bg-primary text-primary-foreground rounded-lg text-xs font-medium hover:bg-primary/90 disabled:opacity-50 transition-colors"
+                          >
+                            {addingKey[provider] ? <Loader2 className="w-3 h-3 animate-spin" /> : <Plus className="w-3 h-3" />}
+                            Adicionar
+                          </button>
+                          <button
+                            onClick={() => setShowNewKeyInput((prev) => ({ ...prev, [provider]: false }))}
+                            className="px-3 py-1.5 bg-muted border border-border rounded-lg text-xs text-muted-foreground hover:bg-muted/70 transition-colors"
+                          >
+                            Cancelar
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <button
+                        onClick={() => setShowNewKeyInput((prev) => ({ ...prev, [provider]: true }))}
+                        className="mt-2 flex items-center gap-1.5 px-3 py-1.5 border border-dashed border-border rounded-xl text-xs text-muted-foreground hover:text-foreground hover:border-foreground/30 transition-colors"
+                      >
+                        <Plus className="w-3.5 h-3.5" /> Adicionar chave
+                      </button>
+                    )}
+                  </div>
+                )}
+              </div>
             </div>
           )
         })}

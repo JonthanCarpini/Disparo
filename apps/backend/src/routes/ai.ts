@@ -67,6 +67,52 @@ export async function aiRoutes(app: FastifyInstance) {
     }
   })
 
+  app.get('/ai/keys/:provider', { preHandler: [app.authenticate] }, async (req, reply) => {
+    const { provider } = req.params as { provider: string }
+    if (!PROVIDERS.includes(provider as never)) {
+      return reply.status(400).send({ error: 'Provedor inválido' })
+    }
+    return query<{ id: number; label: string; api_key_preview: string; enabled: number; created_at: string }>(
+      `SELECT id, label, enabled, created_at,
+        CONCAT(SUBSTRING(api_key, 1, 8), '...') as api_key_preview
+       FROM ai_provider_keys WHERE provider = ? ORDER BY id`,
+      [provider],
+    )
+  })
+
+  app.post('/ai/keys/:provider', { preHandler: [app.authenticate] }, async (req, reply) => {
+    const { provider } = req.params as { provider: string }
+    if (!PROVIDERS.includes(provider as never)) {
+      return reply.status(400).send({ error: 'Provedor inválido' })
+    }
+    const { api_key, label } = req.body as { api_key: string; label?: string }
+    if (!api_key) return reply.status(400).send({ error: 'api_key obrigatória' })
+    const count = await queryOne<{ total: number }>('SELECT COUNT(*) as total FROM ai_provider_keys WHERE provider = ?', [provider])
+    const defaultLabel = label || `Conta ${(count?.total ?? 0) + 1}`
+    await query('INSERT INTO ai_provider_keys (provider, label, api_key) VALUES (?, ?, ?)', [provider, defaultLabel, api_key])
+    return { message: 'Chave adicionada' }
+  })
+
+  app.put('/ai/keys/:provider/:id', { preHandler: [app.authenticate] }, async (req, reply) => {
+    const { provider, id } = req.params as { provider: string; id: string }
+    const { label, enabled } = req.body as { label?: string; enabled?: boolean }
+    const updates: string[] = []
+    const values: unknown[] = []
+    if (label !== undefined) { updates.push('label = ?'); values.push(label) }
+    if (enabled !== undefined) { updates.push('enabled = ?'); values.push(enabled ? 1 : 0) }
+    if (updates.length > 0) {
+      values.push(parseInt(id), provider)
+      await query(`UPDATE ai_provider_keys SET ${updates.join(', ')} WHERE id = ? AND provider = ?`, values)
+    }
+    return { message: 'Chave atualizada' }
+  })
+
+  app.delete('/ai/keys/:provider/:id', { preHandler: [app.authenticate] }, async (req, reply) => {
+    const { provider, id } = req.params as { provider: string; id: string }
+    await query('DELETE FROM ai_provider_keys WHERE id = ? AND provider = ?', [parseInt(id), provider])
+    return { message: 'Chave removida' }
+  })
+
   app.get('/ai/models', { preHandler: [app.authenticate] }, async () => {
     return {
       openai: ['gpt-4o', 'gpt-4o-mini', 'gpt-4-turbo', 'gpt-3.5-turbo'],

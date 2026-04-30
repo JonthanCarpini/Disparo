@@ -123,6 +123,18 @@ export async function runMigrations() {
   await ensureColumnType(db, 'ai_configs', 'provider', "ENUM('openai','gemini','groq','mistral') NOT NULL")
   await ensureColumnType(db, 'campaigns', 'ai_provider', "ENUM('openai','gemini','groq','mistral') NOT NULL")
 
+  await db.execute(`
+    CREATE TABLE IF NOT EXISTS ai_provider_keys (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      provider VARCHAR(50) NOT NULL,
+      label VARCHAR(100) NOT NULL DEFAULT 'Conta',
+      api_key VARCHAR(500) NOT NULL,
+      enabled TINYINT(1) DEFAULT 1,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      INDEX idx_provider (provider)
+    )
+  `)
+
   logger.info('Migração concluída com sucesso')
 }
 

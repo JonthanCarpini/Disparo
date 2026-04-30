@@ -1,4 +1,4 @@
-import { queryOne } from '../lib/db'
+import { query, queryOne } from '../lib/db'
 import { logger } from '../lib/logger'
 
 export type AIProvider = 'openai' | 'gemini' | 'groq' | 'mistral'
@@ -7,6 +7,20 @@ interface AIConfig {
   provider: AIProvider
   api_key: string
   model: string | null
+}
+
+const rotationIndex = new Map<string, number>()
+
+async function getNextApiKey(provider: AIProvider, fallback: string): Promise<string> {
+  const keys = await query<{ api_key: string }>(
+    'SELECT api_key FROM ai_provider_keys WHERE provider = ? AND enabled = 1 ORDER BY id',
+    [provider],
+  )
+  if (keys.length === 0) return fallback
+  const idx = (rotationIndex.get(provider) ?? 0) % keys.length
+  rotationIndex.set(provider, idx + 1)
+  logger.info({ provider, keyIndex: idx, total: keys.length }, 'Rotação de chave API')
+  return keys[idx].api_key
 }
 
 const DEFAULT_MODELS: Record<AIProvider, string> = {
@@ -32,6 +46,7 @@ export async function generateMessage(
     throw new Error(`Provedor de IA "${provider}" não configurado ou desativado`)
   }
 
+  const apiKey = await getNextApiKey(provider, config.api_key)
   const model = modelOverride || config.model || DEFAULT_MODELS[provider]
   const systemPrompt = `Você é um assistente de vendas/marketing para WhatsApp.
 REGRAS OBRIGATÓRIAS:
@@ -51,13 +66,13 @@ ${prompt}
 Gere a mensagem seguindo o formato acima:`
 
   if (provider === 'openai') {
-    return generateOpenAI(config.api_key, model, systemPrompt, userPrompt)
+    return generateOpenAI(apiKey, model, systemPrompt, userPrompt)
   } else if (provider === 'gemini') {
-    return generateGemini(config.api_key, model, systemPrompt, userPrompt)
+    return generateGemini(apiKey, model, systemPrompt, userPrompt)
   } else if (provider === 'mistral') {
-    return generateMistral(config.api_key, model, systemPrompt, userPrompt)
+    return generateMistral(apiKey, model, systemPrompt, userPrompt)
   } else {
-    return generateGroq(config.api_key, model, systemPrompt, userPrompt)
+    return generateGroq(apiKey, model, systemPrompt, userPrompt)
   }
 }
 
