@@ -16,12 +16,23 @@ const MODELS: Record<string, string[]> = {
   openai: ['gpt-4o', 'gpt-4o-mini', 'gpt-4-turbo', 'gpt-3.5-turbo'],
   gemini: ['gemini-1.5-pro', 'gemini-1.5-flash', 'gemini-2.0-flash'],
   groq: ['llama-3.3-70b-versatile', 'llama-3.1-8b-instant', 'mixtral-8x7b-32768'],
+  mistral: [
+    'mistral-large-latest',
+    'mistral-medium-latest',
+    'mistral-small-latest',
+    'ministral-8b-latest',
+    'ministral-3b-latest',
+    'open-mistral-7b',
+    'open-mixtral-8x7b',
+    'open-mixtral-8x22b',
+  ],
 }
 
 const PROVIDER_INFO: Record<string, { label: string; color: string; desc: string }> = {
   openai: { label: 'OpenAI', color: 'text-green-400', desc: 'GPT-4o, GPT-4 Turbo. Melhor qualidade e suporte a TTS.' },
   gemini: { label: 'Google Gemini', color: 'text-blue-400', desc: 'Gemini 1.5 Pro e Flash. Excelente custo-benefício.' },
   groq: { label: 'Groq', color: 'text-orange-400', desc: 'Llama, Mixtral. Ultra rápido e gratuito.' },
+  mistral: { label: 'Mistral AI', color: 'text-red-400', desc: 'Mistral Large, Medium, Small e Ministral. Modelos europeus de alta qualidade.' },
 }
 
 export default function AIPage() {

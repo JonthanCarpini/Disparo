@@ -1,7 +1,7 @@
 import { FastifyInstance } from 'fastify'
 import { query, queryOne } from '../lib/db'
 
-const PROVIDERS = ['openai', 'gemini', 'groq'] as const
+const PROVIDERS = ['openai', 'gemini', 'groq', 'mistral'] as const
 
 export async function aiRoutes(app: FastifyInstance) {
   app.get('/ai/configs', { preHandler: [app.authenticate] }, async () => {
@@ -55,7 +55,7 @@ export async function aiRoutes(app: FastifyInstance) {
     const { generateMessage } = await import('../services/AIService')
     try {
       const message = await generateMessage(
-        provider as 'openai' | 'gemini' | 'groq',
+        provider as 'openai' | 'gemini' | 'groq' | 'mistral',
         prompt || 'Olá! Me apresente de forma simpática.',
         'João',
         '5511999999999',
@@ -76,6 +76,16 @@ export async function aiRoutes(app: FastifyInstance) {
         'llama-3.1-8b-instant',
         'mixtral-8x7b-32768',
         'gemma2-9b-it',
+      ],
+      mistral: [
+        'mistral-large-latest',
+        'mistral-medium-latest',
+        'mistral-small-latest',
+        'ministral-8b-latest',
+        'ministral-3b-latest',
+        'open-mistral-7b',
+        'open-mixtral-8x7b',
+        'open-mixtral-8x22b',
       ],
     }
   })

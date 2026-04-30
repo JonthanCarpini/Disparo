@@ -1,7 +1,7 @@
 import { queryOne } from '../lib/db'
 import { logger } from '../lib/logger'
 
-export type AIProvider = 'openai' | 'gemini' | 'groq'
+export type AIProvider = 'openai' | 'gemini' | 'groq' | 'mistral'
 
 interface AIConfig {
   provider: AIProvider
@@ -13,6 +13,7 @@ const DEFAULT_MODELS: Record<AIProvider, string> = {
   openai: 'gpt-4o-mini',
   gemini: 'gemini-1.5-flash',
   groq: 'llama-3.3-70b-versatile',
+  mistral: 'mistral-small-latest',
 }
 
 export async function generateMessage(
@@ -51,9 +52,43 @@ Gere UMA mensagem única e personalizada para este contato:`
     return generateOpenAI(config.api_key, model, systemPrompt, userPrompt)
   } else if (provider === 'gemini') {
     return generateGemini(config.api_key, model, systemPrompt, userPrompt)
+  } else if (provider === 'mistral') {
+    return generateMistral(config.api_key, model, systemPrompt, userPrompt)
   } else {
     return generateGroq(config.api_key, model, systemPrompt, userPrompt)
   }
+}
+
+async function generateMistral(
+  apiKey: string,
+  model: string,
+  system: string,
+  user: string,
+): Promise<string> {
+  const response = await fetch('https://api.mistral.ai/v1/chat/completions', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${apiKey}`,
+    },
+    body: JSON.stringify({
+      model,
+      messages: [
+        { role: 'system', content: system },
+        { role: 'user', content: user },
+      ],
+      temperature: 1.1,
+      max_tokens: 400,
+    }),
+  })
+  if (!response.ok) {
+    const errText = await response.text()
+    throw new Error(`Mistral API ${response.status}: ${errText}`)
+  }
+  const data = await response.json() as {
+    choices?: Array<{ message?: { content?: string } }>
+  }
+  return data.choices?.[0]?.message?.content?.trim() || ''
 }
 
 async function generateOpenAI(
@@ -117,28 +152,14 @@ export async function generateAudio(
   text: string,
   outputPath: string,
 ): Promise<void> {
+  // TTS requer OpenAI (único provedor com suporte nativo implementado)
+  const ttsProvider = provider === 'openai' ? 'openai' : 'openai'
   const config = await queryOne<AIConfig>(
-    'SELECT api_key FROM ai_configs WHERE provider = ? AND enabled = 1',
-    [provider === 'groq' ? 'openai' : provider],
+    "SELECT api_key FROM ai_configs WHERE provider = ? AND enabled = 1",
+    [ttsProvider],
   )
-
-  if (!config) {
-    const fallback = await queryOne<AIConfig>(
-      "SELECT api_key FROM ai_configs WHERE provider = 'openai' AND enabled = 1",
-    )
-    if (!fallback) throw new Error('Nenhum provedor OpenAI configurado para TTS')
-    return generateOpenAITTS(fallback.api_key, text, outputPath)
-  }
-
-  if (provider === 'openai' || provider === 'groq') {
-    return generateOpenAITTS(config.api_key, text, outputPath)
-  }
-
-  const fallback = await queryOne<AIConfig>(
-    "SELECT api_key FROM ai_configs WHERE provider = 'openai' AND enabled = 1",
-  )
-  if (!fallback) throw new Error('TTS requer OpenAI configurado')
-  return generateOpenAITTS(fallback.api_key, text, outputPath)
+  if (!config) throw new Error('TTS requer OpenAI configurado e habilitado')
+  return generateOpenAITTS(config.api_key, text, outputPath)
 }
 
 async function generateOpenAITTS(apiKey: string, text: string, outputPath: string): Promise<void> {

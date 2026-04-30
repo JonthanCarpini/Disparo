@@ -120,6 +120,9 @@ export async function runMigrations() {
   await ensureColumn(db, 'campaigns', 'daily_sent', 'INT NOT NULL DEFAULT 0')
   await ensureColumn(db, 'campaigns', 'last_send_date', 'DATE NULL DEFAULT NULL')
 
+  await ensureColumnType(db, 'ai_configs', 'provider', "ENUM('openai','gemini','groq','mistral') NOT NULL")
+  await ensureColumnType(db, 'campaigns', 'ai_provider', "ENUM('openai','gemini','groq','mistral') NOT NULL")
+
   logger.info('Migração concluída com sucesso')
 }
 
