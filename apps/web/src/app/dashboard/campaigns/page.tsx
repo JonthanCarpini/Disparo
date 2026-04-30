@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from 'react'
 import {
   Send, Plus, Pause, Play, Trash2, Loader2,
   CheckCircle, XCircle, Clock, Upload, Sparkles,
-  ListChecks, ShieldCheck, Eye, FileText, ChevronDown,
+  ListChecks, ShieldCheck, Eye, FileText, ChevronDown, Pencil,
 } from 'lucide-react'
 
 const PREDEFINED_PROMPTS: { label: string; prompt: string }[] = [
@@ -75,12 +75,17 @@ interface Campaign {
   failed: number
   total: number
   ai_provider: string
+  ai_model?: string | null
+  prompt?: string
   created_at: string
   list_name?: string
   list_id?: string
   max_per_day?: number
   daily_sent?: number
-  session_ids?: string
+  min_delay?: number
+  max_delay?: number
+  rotate_sessions?: boolean | number
+  session_ids?: string | string[]
 }
 
 interface Session { id: string; name: string; status: string }
@@ -99,6 +104,14 @@ export default function CampaignsPage() {
   const [verifying, setVerifying] = useState<string | null>(null)
   const [testSending, setTestSending] = useState<string | null>(null)
   const [showPresets, setShowPresets] = useState(false)
+  const [editCampaign, setEditCampaign] = useState<Campaign | null>(null)
+  const [editForm, setEditForm] = useState({
+    name: '', list_id: '', ai_provider: 'openai', ai_model: '',
+    prompt: '', min_delay: '5', max_delay: '15', max_per_day: '0',
+    rotate_sessions: true, session_ids: [] as string[],
+  })
+  const [editSubmitting, setEditSubmitting] = useState(false)
+  const [showEditPresets, setShowEditPresets] = useState(false)
   const mediaRef = useRef<HTMLInputElement>(null)
 
   const [form, setForm] = useState({
@@ -249,6 +262,60 @@ export default function CampaignsPage() {
     toast.success('Campanha removida')
   }
 
+  const openEdit = (campaign: Campaign) => {
+    const sessionIds: string[] = Array.isArray(campaign.session_ids)
+      ? campaign.session_ids as string[]
+      : JSON.parse((campaign.session_ids as string) || '[]')
+    setEditForm({
+      name: campaign.name,
+      list_id: campaign.list_id || '',
+      ai_provider: campaign.ai_provider,
+      ai_model: campaign.ai_model || '',
+      prompt: campaign.prompt || '',
+      min_delay: String(campaign.min_delay ?? 5),
+      max_delay: String(campaign.max_delay ?? 15),
+      max_per_day: String(campaign.max_per_day ?? 0),
+      rotate_sessions: Boolean(campaign.rotate_sessions),
+      session_ids: sessionIds,
+    })
+    setEditCampaign(campaign)
+  }
+
+  const toggleEditSession = (id: string) => {
+    setEditForm((prev) => ({
+      ...prev,
+      session_ids: prev.session_ids.includes(id)
+        ? prev.session_ids.filter((s) => s !== id)
+        : [...prev.session_ids, id],
+    }))
+  }
+
+  const handleEdit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!editCampaign) return
+    setEditSubmitting(true)
+    try {
+      await api.put(`/campaigns/${editCampaign.id}`, {
+        name: editForm.name,
+        ai_provider: editForm.ai_provider,
+        ai_model: editForm.ai_model || null,
+        prompt: editForm.prompt,
+        min_delay: parseInt(editForm.min_delay),
+        max_delay: parseInt(editForm.max_delay),
+        max_per_day: parseInt(editForm.max_per_day),
+        rotate_sessions: editForm.rotate_sessions,
+        session_ids: JSON.stringify(editForm.session_ids),
+      })
+      toast.success('Campanha atualizada!')
+      setEditCampaign(null)
+      loadAll()
+    } catch {
+      toast.error('Erro ao atualizar campanha')
+    } finally {
+      setEditSubmitting(false)
+    }
+  }
+
   const statusMap: Record<string, { label: string; class: string }> = {
     draft: { label: 'Rascunho', class: 'bg-muted text-muted-foreground' },
     scheduled: { label: 'Agendado', class: 'bg-blue-500/20 text-blue-400' },
@@ -295,6 +362,11 @@ export default function CampaignsPage() {
                   <button onClick={() => setDetailsCampaign(c)} className="flex items-center gap-1.5 px-3 py-1.5 text-sm bg-muted text-foreground rounded-xl hover:bg-muted/70 transition-colors">
                     <Eye className="w-3.5 h-3.5" /> Detalhes
                   </button>
+                  {c.status !== 'running' && (
+                    <button onClick={() => openEdit(c)} className="flex items-center gap-1.5 px-3 py-1.5 text-sm bg-muted text-foreground rounded-xl hover:bg-muted/70 transition-colors">
+                      <Pencil className="w-3.5 h-3.5" /> Editar
+                    </button>
+                  )}
                   <button onClick={() => verifyNumbers(c)} disabled={verifying === c.id}
                     className="flex items-center gap-1.5 px-3 py-1.5 text-sm bg-blue-500/10 text-blue-400 rounded-xl hover:bg-blue-500/20 transition-colors disabled:opacity-50">
                     {verifying === c.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <ShieldCheck className="w-3.5 h-3.5" />}
@@ -494,8 +566,109 @@ export default function CampaignsPage() {
         <CampaignDetailsModal
           campaignId={detailsCampaign.id}
           campaignName={detailsCampaign.name}
+          campaignStatus={detailsCampaign.status}
+          sessions={sessions}
           onClose={() => setDetailsCampaign(null)}
         />
+      )}
+
+      {editCampaign && (
+        <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4 overflow-y-auto">
+          <div className="bg-card border border-border rounded-2xl p-6 w-full max-w-2xl my-4">
+            <h3 className="text-xl font-semibold mb-6">Editar Campanha</h3>
+            <form onSubmit={handleEdit} className="space-y-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div className="col-span-2">
+                  <label className="block text-sm text-muted-foreground mb-1.5">Nome da campanha *</label>
+                  <input value={editForm.name} onChange={(e) => setEditForm({ ...editForm, name: e.target.value })}
+                    required className="w-full px-3 py-2.5 bg-muted border border-border rounded-xl text-foreground focus:outline-none focus:ring-2 focus:ring-primary" />
+                </div>
+                <div>
+                  <label className="block text-sm text-muted-foreground mb-1.5">Lista de contatos</label>
+                  <select value={editForm.list_id} onChange={(e) => setEditForm({ ...editForm, list_id: e.target.value })}
+                    className="w-full px-3 py-2.5 bg-muted border border-border rounded-xl text-foreground focus:outline-none focus:ring-2 focus:ring-primary">
+                    <option value="">Selecione...</option>
+                    {lists.map((l) => <option key={l.id} value={l.id}>{l.name} ({l.total})</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm text-muted-foreground mb-1.5">Provedor IA *</label>
+                  <select value={editForm.ai_provider} onChange={(e) => setEditForm({ ...editForm, ai_provider: e.target.value })}
+                    className="w-full px-3 py-2.5 bg-muted border border-border rounded-xl text-foreground focus:outline-none focus:ring-2 focus:ring-primary">
+                    {aiConfigs.map((a) => <option key={a.provider} value={a.provider}>{a.provider.toUpperCase()}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm text-muted-foreground mb-1.5">Delay mín. (seg)</label>
+                  <input type="number" min="3" value={editForm.min_delay} onChange={(e) => setEditForm({ ...editForm, min_delay: e.target.value })}
+                    className="w-full px-3 py-2.5 bg-muted border border-border rounded-xl text-foreground focus:outline-none focus:ring-2 focus:ring-primary" />
+                </div>
+                <div>
+                  <label className="block text-sm text-muted-foreground mb-1.5">Delay máx. (seg)</label>
+                  <input type="number" min="5" value={editForm.max_delay} onChange={(e) => setEditForm({ ...editForm, max_delay: e.target.value })}
+                    className="w-full px-3 py-2.5 bg-muted border border-border rounded-xl text-foreground focus:outline-none focus:ring-2 focus:ring-primary" />
+                </div>
+                <div className="col-span-2">
+                  <label className="block text-sm text-muted-foreground mb-1.5">Máximo de disparos por dia <span className="text-xs">(0 = sem limite)</span></label>
+                  <input type="number" min="0" value={editForm.max_per_day} onChange={(e) => setEditForm({ ...editForm, max_per_day: e.target.value })}
+                    className="w-full px-3 py-2.5 bg-muted border border-border rounded-xl text-foreground focus:outline-none focus:ring-2 focus:ring-primary" />
+                </div>
+              </div>
+
+              <div>
+                <div className="flex items-center justify-between mb-1.5">
+                  <label className="text-sm text-muted-foreground">Prompt para IA *</label>
+                  <div className="relative">
+                    <button type="button" onClick={() => setShowEditPresets((v) => !v)}
+                      className="flex items-center gap-1.5 px-3 py-1 bg-muted border border-border rounded-lg text-xs text-muted-foreground hover:bg-muted/70 transition-colors">
+                      <FileText className="w-3.5 h-3.5" />
+                      Prompt predefinido
+                      <ChevronDown className={`w-3 h-3 transition-transform ${showEditPresets ? 'rotate-180' : ''}`} />
+                    </button>
+                    {showEditPresets && (
+                      <div className="absolute right-0 top-full mt-1 z-10 bg-card border border-border rounded-xl shadow-lg w-64 overflow-hidden">
+                        {PREDEFINED_PROMPTS.map((p) => (
+                          <button key={p.label} type="button"
+                            onClick={() => { setEditForm((prev) => ({ ...prev, prompt: p.prompt })); setShowEditPresets(false) }}
+                            className="w-full text-left px-4 py-2.5 text-sm text-foreground hover:bg-muted transition-colors border-b border-border last:border-0">
+                            {p.label}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
+                <textarea value={editForm.prompt} onChange={(e) => setEditForm({ ...editForm, prompt: e.target.value })}
+                  required rows={6} className="w-full px-3 py-2.5 bg-muted border border-border rounded-xl text-foreground focus:outline-none focus:ring-2 focus:ring-primary resize-none" />
+              </div>
+
+              <div>
+                <label className="block text-sm text-muted-foreground mb-2">Números WhatsApp *</label>
+                <div className="flex flex-wrap gap-2">
+                  {connectedSessions.map((s) => (
+                    <button type="button" key={s.id} onClick={() => toggleEditSession(s.id)}
+                      className={`px-3 py-1.5 rounded-xl text-sm transition-colors ${editForm.session_ids.includes(s.id) ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground hover:bg-muted/80'}`}>
+                      {s.name}
+                    </button>
+                  ))}
+                  {connectedSessions.length === 0 && <p className="text-sm text-destructive">Nenhum número conectado</p>}
+                </div>
+              </div>
+
+              <div className="flex gap-3 pt-2">
+                <button type="button" onClick={() => setEditCampaign(null)}
+                  className="py-2.5 px-4 bg-muted rounded-xl text-sm font-medium hover:bg-muted/80 transition-colors">
+                  Cancelar
+                </button>
+                <button type="submit" disabled={editSubmitting}
+                  className="flex-1 py-2.5 bg-primary text-primary-foreground rounded-xl text-sm font-medium hover:bg-primary/90 disabled:opacity-50 transition-colors flex items-center justify-center gap-2">
+                  {editSubmitting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Pencil className="w-4 h-4" />}
+                  Salvar alterações
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
       )}
     </div>
   )

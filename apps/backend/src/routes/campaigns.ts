@@ -261,24 +261,61 @@ export async function campaignsRoutes(app: FastifyInstance) {
     return { message: 'Campanha removida' }
   })
 
+  app.put('/campaigns/:id', { preHandler: [app.authenticate] }, async (req, reply) => {
+    const { id } = req.params as { id: string }
+    const c = await queryOne<{ status: string }>('SELECT status FROM campaigns WHERE id = ?', [id])
+    if (!c) return reply.status(404).send({ error: 'Campanha não encontrada' })
+    if (c.status === 'running') return reply.status(400).send({ error: 'Pause a campanha antes de editar' })
+
+    const {
+      name, ai_provider, ai_model, prompt,
+      min_delay, max_delay, max_per_day, rotate_sessions, session_ids,
+    } = req.body as {
+      name?: string; ai_provider?: string; ai_model?: string; prompt?: string
+      min_delay?: number; max_delay?: number; max_per_day?: number
+      rotate_sessions?: boolean; session_ids?: string
+    }
+
+    const updates: string[] = []
+    const values: unknown[] = []
+    if (name !== undefined) { updates.push('name = ?'); values.push(name) }
+    if (ai_provider !== undefined) { updates.push('ai_provider = ?'); values.push(ai_provider) }
+    if (ai_model !== undefined) { updates.push('ai_model = ?'); values.push(ai_model || null) }
+    if (prompt !== undefined) { updates.push('prompt = ?'); values.push(prompt) }
+    if (min_delay !== undefined) { updates.push('min_delay = ?'); values.push(Number(min_delay)) }
+    if (max_delay !== undefined) { updates.push('max_delay = ?'); values.push(Number(max_delay)) }
+    if (max_per_day !== undefined) { updates.push('max_per_day = ?'); values.push(Number(max_per_day)) }
+    if (rotate_sessions !== undefined) { updates.push('rotate_sessions = ?'); values.push(rotate_sessions ? 1 : 0) }
+    if (session_ids !== undefined) { updates.push('session_ids = ?'); values.push(session_ids) }
+
+    if (updates.length > 0) {
+      values.push(id)
+      await query(`UPDATE campaigns SET ${updates.join(', ')} WHERE id = ?`, values)
+    }
+    return { message: 'Campanha atualizada' }
+  })
+
   app.get('/campaigns/ws', { websocket: true }, (socket) => {
     logger.info('Cliente WebSocket conectado (campaigns)')
 
     const onUpdate = (data: unknown) => socket.send(JSON.stringify({ event: 'update', ...data as object }))
     const onProgress = (data: unknown) => socket.send(JSON.stringify({ event: 'progress', ...data as object }))
+    const onSending = (data: unknown) => socket.send(JSON.stringify({ event: 'sending', ...data as object }))
 
     campaignWsEmitter.on('campaign:update', onUpdate)
     campaignWsEmitter.on('campaign:progress', onProgress)
+    campaignWsEmitter.on('campaign:sending', onSending)
 
     socket.on('close', () => {
       campaignWsEmitter.off('campaign:update', onUpdate)
       campaignWsEmitter.off('campaign:progress', onProgress)
+      campaignWsEmitter.off('campaign:sending', onSending)
     })
   })
 }
 
 async function startCampaign(campaignId: string) {
   await query("UPDATE campaigns SET status = 'running' WHERE id = ?", [campaignId])
-  await campaignQueue.add({ campaignId }, { jobId: campaignId })
+  await campaignQueue.add({ campaignId }, { jobId: `${campaignId}-${Date.now()}` })
   logger.info({ campaignId }, 'Campanha adicionada à fila')
 }

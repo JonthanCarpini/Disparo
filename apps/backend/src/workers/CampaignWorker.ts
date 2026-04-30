@@ -145,11 +145,23 @@ async function processCampaign(campaignId: string) {
     const sessionId = connectedSessions[sessionIndex % connectedSessions.length]
     if (campaign.rotate_sessions) sessionIndex++
 
+    const isLastContact = contact === contacts[contacts.length - 1]
+    const delayMs = isLastContact ? 0 : randomDelay(campaign.min_delay, campaign.max_delay)
+
     const logId = uuidv4()
     await query(
       "INSERT INTO campaign_logs (id, campaign_id, contact_id, phone, status, session_id) VALUES (?, ?, ?, ?, 'pending', ?)",
       [logId, campaignId, contact.id, contact.phone, sessionId],
     )
+
+    campaignWsEmitter.emit('campaign:sending', {
+      campaignId,
+      phone: contact.phone,
+      name: contact.name,
+      sessionId,
+      aiProvider: campaign.ai_provider,
+      aiModel: campaign.ai_model,
+    })
 
     try {
       const message = await generateMessage(
@@ -157,6 +169,7 @@ async function processCampaign(campaignId: string) {
         campaign.prompt,
         contact.name || '',
         contact.phone,
+        campaign.ai_model || undefined,
       )
 
       const target = contact.jid || contact.phone
@@ -204,6 +217,12 @@ async function processCampaign(campaignId: string) {
         failed,
         total: contacts.length,
         phone: contact.phone,
+        name: contact.name,
+        sessionId,
+        aiProvider: campaign.ai_provider,
+        aiModel: campaign.ai_model,
+        message,
+        delay: Math.round(delayMs / 1000),
         status: 'sent',
       })
 
@@ -222,14 +241,19 @@ async function processCampaign(campaignId: string) {
         failed,
         total: contacts.length,
         phone: contact.phone,
+        name: contact.name,
+        sessionId,
+        aiProvider: campaign.ai_provider,
+        aiModel: campaign.ai_model,
+        delay: Math.round(delayMs / 1000),
         status: 'failed',
         error: errorMsg,
       })
       logger.warn({ err, campaignId, phone: contact.phone }, 'Falha ao enviar mensagem')
     }
 
-    if (contact !== contacts[contacts.length - 1]) {
-      await new Promise((r) => setTimeout(r, randomDelay(campaign.min_delay, campaign.max_delay)))
+    if (delayMs > 0) {
+      await new Promise((r) => setTimeout(r, delayMs))
     }
   }
 
