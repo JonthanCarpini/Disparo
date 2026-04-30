@@ -206,7 +206,9 @@ export default function CampaignsPage() {
   }
 
   const verifyNumbers = async (campaign: Campaign) => {
-    const sessionIds: string[] = JSON.parse(campaign.session_ids || '[]')
+    const sessionIds: string[] = Array.isArray(campaign.session_ids)
+      ? campaign.session_ids as unknown as string[]
+      : JSON.parse((campaign.session_ids as string) || '[]')
     const conn = sessionIds.find((s) => sessions.find((x) => x.id === s && x.status === 'connected'))
     if (!conn) return toast.error('Nenhuma sessão conectada para validar')
     if (!campaign.list_id) return

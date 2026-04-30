@@ -31,10 +31,11 @@ export async function campaignsRoutes(app: FastifyInstance) {
   app.get('/campaigns/:id/logs', { preHandler: [app.authenticate] }, async (req) => {
     const { id } = req.params as { id: string }
     const { page = '1', limit = '50' } = req.query as { page?: string; limit?: string }
-    const offset = (parseInt(page) - 1) * parseInt(limit)
+    const limitVal = Math.max(1, parseInt(limit) || 50)
+    const offset = (Math.max(1, parseInt(page) || 1) - 1) * limitVal
     return query(
-      'SELECT * FROM campaign_logs WHERE campaign_id = ? ORDER BY created_at DESC LIMIT ? OFFSET ?',
-      [id, parseInt(limit), offset],
+      `SELECT * FROM campaign_logs WHERE campaign_id = ? ORDER BY created_at DESC LIMIT ${limitVal} OFFSET ${offset}`,
+      [id],
     )
   })
 
@@ -170,13 +171,16 @@ export async function campaignsRoutes(app: FastifyInstance) {
     }>('SELECT id, list_id, ai_provider, ai_model, prompt, session_ids FROM campaigns WHERE id = ?', [id])
     if (!campaign) return reply.status(404).send({ error: 'Campanha não encontrada' })
 
-    const sessionIds: string[] = JSON.parse(campaign.session_ids || '[]')
+    const sessionIds: string[] = Array.isArray(campaign.session_ids)
+      ? campaign.session_ids as unknown as string[]
+      : JSON.parse(campaign.session_ids || '[]')
     const sessionId = sessionIds.find((s) => baileysService.isConnected(s))
     if (!sessionId) return reply.status(400).send({ error: 'Nenhuma sessão conectada' })
 
+    const sampleLimit = Math.min(Math.max(Math.trunc(Number(count) || 1), 1), 10)
     const sample = await query<{ id: string; phone: string; jid: string | null; name: string | null }>(
-      'SELECT id, phone, jid, name FROM contacts WHERE list_id = ? ORDER BY RAND() LIMIT ?',
-      [campaign.list_id, Math.min(Math.max(count, 1), 10)],
+      `SELECT id, phone, jid, name FROM contacts WHERE list_id = ? ORDER BY RAND() LIMIT ${sampleLimit}`,
+      [campaign.list_id],
     )
 
     const results = []
@@ -201,7 +205,8 @@ export async function campaignsRoutes(app: FastifyInstance) {
     const { page = '1', limit = '50', status } = req.query as {
       page?: string; limit?: string; status?: string
     }
-    const offset = (parseInt(page) - 1) * parseInt(limit)
+    const limitVal = Math.max(1, parseInt(limit) || 50)
+    const offset = (Math.max(1, parseInt(page) || 1) - 1) * limitVal
 
     const campaign = await queryOne<{ list_id: string }>('SELECT list_id FROM campaigns WHERE id = ?', [id])
     if (!campaign) return { contacts: [], totals: null }
@@ -226,8 +231,8 @@ export async function campaignsRoutes(app: FastifyInstance) {
        ) cl ON cl.contact_id = c.id AND cl.rn = 1
        WHERE c.list_id = ? ${baseFilter}
        ORDER BY c.created_at
-       LIMIT ? OFFSET ?`,
-      [id, campaign.list_id, parseInt(limit), offset],
+       LIMIT ${limitVal} OFFSET ${offset}`,
+      [id, campaign.list_id],
     )
 
     const totals = await queryOne<{

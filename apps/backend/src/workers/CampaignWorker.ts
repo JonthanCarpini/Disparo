@@ -85,7 +85,9 @@ async function processCampaign(campaignId: string) {
   await query("UPDATE campaigns SET status = 'running' WHERE id = ?", [campaignId])
   campaignWsEmitter.emit('campaign:update', { campaignId, status: 'running' })
 
-  const sessionIds: string[] = JSON.parse(campaign.session_ids || '[]')
+  const sessionIds: string[] = Array.isArray(campaign.session_ids)
+    ? campaign.session_ids as unknown as string[]
+    : JSON.parse(campaign.session_ids || '[]')
   const connectedSessions = sessionIds.filter((id) => baileysService.isConnected(id))
 
   if (connectedSessions.length === 0) {
