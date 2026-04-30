@@ -129,6 +129,48 @@ Teste no grupo de 958 membros após relogin:
 - **957 contatos extraídos** (1 telefone real do dono + 956 LIDs preservados)
 - LIDs serão usados como destinatários nos disparos via `<lid>@lid`
 
+### 3.6. Evolução do módulo de campanhas (Abr/2026)
+
+Features adicionadas após o fix do LID:
+
+**1. Limite de disparos por dia (`max_per_day`)**
+- Coluna `campaigns.max_per_day INT DEFAULT 0` (0 = sem limite)
+- Colunas auxiliares: `daily_sent INT`, `last_send_date DATE`
+- Worker pausa automaticamente ao atingir o limite e emite WS `campaign:update` com `reason: 'max_per_day_reached'`
+- Reset diário automático quando `last_send_date != hoje`
+
+**2. Pause/Resume robusto (de onde parou)**
+- `SELECT` no worker faz LEFT JOIN com subquery em `campaign_logs` excluindo contatos com `status='sent'`
+- Filtro adicional: `(c.wa_exists IS NULL OR c.wa_exists = 1)` — pula números que falharam na validação
+- Mantém contadores `sent`/`failed` acumulados ao retomar
+- Botão "Retomar" aparece em `paused` E `failed`
+
+**3. Status por contato (aguardando / enviado / falhou)**
+- Componente `CampaignDetailsModal.tsx` com totais clicáveis (filtros) + tabela paginada
+- Endpoint `GET /api/campaigns/:id/contacts-status?page&limit&status`
+- Query usa `ROW_NUMBER() OVER (PARTITION BY contact_id ORDER BY created_at DESC)` para pegar o último log de cada contato
+- Status `aguardando` é virtual: `COALESCE(cl.status, 'aguardando')` quando não há log
+
+**4. Validação prévia de contatos (onWhatsApp)**
+- `BaileysService.verifyContacts(sessionId, contacts[])` em batches de 50, throttle 500ms
+- LIDs sempre considerados válidos (privacidade WA não permite verificação)
+- Atualiza `contacts.wa_exists` (TINYINT 1/0) e `verified_at`
+- Endpoint `POST /api/contacts/lists/:id/verify-numbers` com `{sessionId}`
+- Worker pula `wa_exists = 0` no SELECT principal
+
+**5. Pré-visualização e disparo de teste**
+- `TestMessageModal.tsx` — gera 1-5 amostras com IA usando contatos reais (sem disparar)
+- `POST /api/campaigns/test-message` — preview no form ANTES de criar a campanha
+- `POST /api/campaigns/:id/test-send` — envia 3 mensagens reais (com 2s delay) para amostragem após criar
+
+### 3.7. Suporte a Mistral AI (Abr/2026)
+
+- Tipo `AIProvider = 'openai' | 'gemini' | 'groq' | 'mistral'`
+- Função `generateMistral()` via `fetch` direto na API oficial (`https://api.mistral.ai/v1/chat/completions`) — endpoint compatível com OpenAI, sem nova dependência
+- Migração `ensureColumnType` faz `ALTER MODIFY` idempotente nos ENUMs de `ai_configs.provider` e `campaigns.ai_provider` para incluir `'mistral'`
+- 8 modelos disponíveis no dropdown: `mistral-large-latest`, `mistral-medium-latest`, `mistral-small-latest`, `ministral-8b-latest`, `ministral-3b-latest`, `open-mistral-7b`, `open-mixtral-8x7b`, `open-mixtral-8x22b`
+- TTS continua **exclusivamente OpenAI** (único com suporte nativo). Lógica de fallback simplificada em `generateAudio()`
+
 ---
 
 ## 4. Arquivos Críticos
@@ -159,13 +201,31 @@ Worker BullMQ que processa filas de campanhas. Para cada contato:
 - `target = contact.jid || contact.phone` — preferência sempre por JID completo
 - Aceita rotação de sessões (`rotate_sessions`)
 - Delay aleatório entre `min_delay` e `max_delay` segundos
+- **Resume**: SELECT exclui `campaign_logs.status='sent'` e `contacts.wa_exists=0`
+- **Limite diário**: ao atingir `max_per_day`, pausa e emite WS event
+- **Reset diário**: zera `daily_sent` quando `last_send_date != hoje`
+- Status da campanha verificado a cada contato (custo desnecessário — TODO: trocar por pub/sub Redis)
 
 ### `apps/backend/src/routes/contacts.ts`
 
 - `POST /contacts/extract-group` — extrai grupo via Baileys, salva em `contacts` com `jid`
 - `POST /contacts/extract-contacts` — extrai agenda completa
 - `GET /contacts/lists/:id/export` — CSV com BOM + `;`
+- `POST /contacts/lists/:id/verify-numbers` — valida via `onWhatsApp`, marca `wa_exists`
 - **`bulkInsertContacts()`** — batch INSERT de 500 em 500 (importante para grupos grandes; INSERT linha-a-linha trava com 1000+ contatos)
+
+### `apps/backend/src/routes/campaigns.ts`
+
+- `POST /campaigns` — cria campanha (multipart com mídia opcional)
+- `POST /campaigns/:id/pause` / `POST /campaigns/:id/resume`
+- `POST /campaigns/test-message` — preview IA (sem disparar) usando contatos reais
+- `POST /campaigns/:id/test-send` — envia 3 mensagens reais para amostra
+- `GET /campaigns/:id/contacts-status` — status agregado por contato (aguardando/sent/failed) com totais
+
+### `apps/backend/src/services/AIService.ts`
+
+Provedores: OpenAI (SDK `openai`), Gemini (SDK `@google/generative-ai`), Groq (SDK `groq-sdk`), Mistral (`fetch` direto).
+Dispatcher em `generateMessage()` por `if/else`. Próxima refatoração: extrair `AIProviderAdapter` interface + Map.
 
 ---
 
@@ -177,10 +237,37 @@ Worker BullMQ que processa filas de campanhas. Para cada contato:
 contacts (
   id VARCHAR(36) PK,
   list_id VARCHAR(36) FK,
-  phone VARCHAR(50),       -- pode ser telefone OU número de LID (15 dígitos)
-  jid VARCHAR(100),        -- JID completo: <num>@s.whatsapp.net OU <lid>@lid
+  phone VARCHAR(50),         -- pode ser telefone OU número de LID (15 dígitos)
+  jid VARCHAR(100),          -- JID completo: <num>@s.whatsapp.net OU <lid>@lid
   name VARCHAR(200),
+  wa_exists TINYINT(1) NULL, -- NULL=não verificado, 1=válido, 0=inválido
+  verified_at TIMESTAMP NULL,
   ...
+)
+
+campaigns (
+  id VARCHAR(36) PK,
+  ai_provider ENUM('openai','gemini','groq','mistral'),
+  status ENUM('draft','scheduled','running','paused','completed','failed'),
+  max_per_day INT DEFAULT 0,       -- 0 = sem limite
+  daily_sent INT DEFAULT 0,        -- contador resetado diariamente
+  last_send_date DATE NULL,        -- data do último disparo (para reset)
+  sent INT, failed INT, total INT,
+  ...
+)
+
+campaign_logs (
+  id VARCHAR(36) PK,
+  campaign_id VARCHAR(36) FK,
+  contact_id VARCHAR(36) FK,
+  status ENUM('pending','sent','failed'),
+  message TEXT, error TEXT, sent_at TIMESTAMP,
+  created_at TIMESTAMP
+)
+
+ai_configs (
+  provider ENUM('openai','gemini','groq','mistral') UNIQUE,
+  api_key VARCHAR(500), model VARCHAR(100), enabled TINYINT(1)
 )
 ```
 
@@ -245,9 +332,18 @@ docker exec disparo_mysql mysql -udisparo -pDisparo@2026 disparo_whats -e "SELEC
 
 ## 10. Próximos Passos Sugeridos
 
-- [ ] Endpoint de **disparo de teste** (5 mensagens) antes do massivo
+- [x] ~~Endpoint de **disparo de teste** (5 mensagens) antes do massivo~~ — feito (`/campaigns/:id/test-send`)
+- [x] ~~**Validação prévia de contatos** via `onWhatsApp`~~ — feito
+- [x] ~~**Limite diário** com pause automático~~ — feito (`max_per_day`)
+- [x] ~~**Status por contato** (aguardando/enviado/falhou)~~ — feito
+- [x] ~~**Mistral AI** como provedor~~ — feito
 - [ ] **Aquecimento de chip** (warming): primeiras 24h enviar só para contatos da agenda
-- [ ] **Detecção de ban** automática (tratar `connection.update` com `loggedOut`)
+- [ ] **Detecção de ban** automática (tratar `connection.update` com `loggedOut`, marcar sessão)
 - [ ] **Rotação inteligente** de sessões baseada em taxa de erro
-- [ ] **Métricas** por sessão (sent/failed/banned)
+- [ ] **Métricas** por sessão (sent/failed/banned em dashboard)
+- [ ] **Refatorar `AIService`**: extrair `AIProviderAdapter` interface (suporte fácil para DeepSeek, Anthropic)
+- [ ] **Pub/sub Redis** para checagem de status no worker (hoje faz SELECT a cada contato)
+- [ ] **Índice composto** em `campaign_logs(campaign_id, contact_id, status)` para acelerar resume com milhões de logs
+- [ ] **Verificação de números em background job** (hoje bloqueia HTTP até terminar; problemático para listas com 5k+)
+- [ ] **Busca por telefone/nome** no modal de detalhes da campanha
 - [ ] **Variação de mensagens** via templates + IA (já parcial via `prompt`)
