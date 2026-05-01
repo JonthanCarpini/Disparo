@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
-import { Plus, Trash2, RefreshCw, Wifi, WifiOff, Smartphone, Loader2, Image as ImgIcon } from 'lucide-react'
+import { Plus, Trash2, RefreshCw, Wifi, WifiOff, Smartphone, Loader2, Image as ImgIcon, Flame, Save } from 'lucide-react'
 import { toast } from 'sonner'
 import { api } from '@/lib/api'
 
@@ -10,6 +10,7 @@ interface Session {
   name: string
   phone: string | null
   status: 'disconnected' | 'connecting' | 'connected' | 'banned'
+  warming_daily_limit: number
 }
 
 const WS_URL = (process.env.NEXT_PUBLIC_WS_URL || 'ws://localhost:3333') + '/api/whatsapp/ws'
@@ -19,6 +20,8 @@ export default function WhatsAppPage() {
   const [qrMap, setQrMap] = useState<Record<string, string>>({})
   const [newName, setNewName] = useState('')
   const [loading, setLoading] = useState(false)
+  const [warmingEdits, setWarmingEdits] = useState<Record<string, string>>({})
+  const [warmingSaving, setWarmingSaving] = useState<Record<string, boolean>>({})
   const wsRef = useRef<WebSocket | null>(null)
 
   useEffect(() => {
@@ -77,6 +80,9 @@ export default function WhatsAppPage() {
           })
           toast.success(`Número conectado!`)
         }
+        if (msg.status === 'banned') {
+          toast.error(`Número banido pelo WhatsApp! Verifique a sessão.`, { duration: 8000 })
+        }
       }
     }
 
@@ -113,6 +119,21 @@ export default function WhatsAppPage() {
   const reconnect = async (id: string) => {
     await api.post(`/whatsapp/sessions/${id}/reconnect`)
     toast.info('Reconectando...')
+  }
+
+  const saveWarming = async (id: string) => {
+    const val = warmingEdits[id] ?? ''
+    const limit = Math.max(0, parseInt(val) || 0)
+    setWarmingSaving((prev) => ({ ...prev, [id]: true }))
+    try {
+      await api.put(`/whatsapp/sessions/${id}/warming`, { warming_daily_limit: limit })
+      setSessions((prev) => prev.map((s) => s.id === id ? { ...s, warming_daily_limit: limit } : s))
+      toast.success('Limite de aquecimento salvo')
+    } catch {
+      toast.error('Erro ao salvar limite')
+    } finally {
+      setWarmingSaving((prev) => ({ ...prev, [id]: false }))
+    }
   }
 
   const statusIcon = (s: Session['status']) => {
@@ -198,7 +219,31 @@ export default function WhatsAppPage() {
               </div>
             )}
 
-            <div className="flex gap-2 mt-4 pt-4 border-t border-border">
+            <div className="mt-4 pt-4 border-t border-border">
+              <div className="flex items-center gap-2 mb-1">
+                <Flame className="w-3.5 h-3.5 text-orange-400" />
+                <span className="text-xs text-muted-foreground">Limite de aquecimento por dia</span>
+              </div>
+              <div className="flex gap-2">
+                <input
+                  type="number"
+                  min="0"
+                  placeholder={s.warming_daily_limit > 0 ? String(s.warming_daily_limit) : '0 = sem limite'}
+                  value={warmingEdits[s.id] ?? (s.warming_daily_limit > 0 ? String(s.warming_daily_limit) : '')}
+                  onChange={(e) => setWarmingEdits((prev) => ({ ...prev, [s.id]: e.target.value }))}
+                  className="flex-1 px-3 py-1.5 text-sm bg-muted border border-border rounded-lg focus:outline-none focus:ring-1 focus:ring-primary"
+                />
+                <button
+                  onClick={() => saveWarming(s.id)}
+                  disabled={warmingSaving[s.id]}
+                  className="px-3 py-1.5 text-sm bg-orange-500/20 text-orange-400 hover:bg-orange-500/30 rounded-lg transition-colors disabled:opacity-50"
+                >
+                  {warmingSaving[s.id] ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
+                </button>
+              </div>
+            </div>
+
+            <div className="flex gap-2 mt-3">
               {s.status !== 'connected' && s.status !== 'connecting' && (
                 <button
                   onClick={() => reconnect(s.id)}

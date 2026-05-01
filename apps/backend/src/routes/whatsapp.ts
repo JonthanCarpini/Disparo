@@ -8,9 +8,19 @@ import { logger } from '../lib/logger'
 export async function whatsappRoutes(app: FastifyInstance) {
   app.get('/whatsapp/sessions', { preHandler: [app.authenticate] }, async () => {
     const sessions = await query(
-      'SELECT id, name, phone, status, created_at FROM whatsapp_sessions ORDER BY created_at DESC',
+      'SELECT id, name, phone, status, warming_daily_limit, created_at FROM whatsapp_sessions ORDER BY created_at DESC',
     )
     return sessions
+  })
+
+  app.put('/whatsapp/sessions/:id/warming', { preHandler: [app.authenticate] }, async (req, reply) => {
+    const { id } = req.params as { id: string }
+    const { warming_daily_limit } = req.body as { warming_daily_limit: number }
+    const session = await queryOne('SELECT id FROM whatsapp_sessions WHERE id = ?', [id])
+    if (!session) return reply.status(404).send({ error: 'Sessão não encontrada' })
+    const limit = Math.max(0, Math.trunc(Number(warming_daily_limit) || 0))
+    await query('UPDATE whatsapp_sessions SET warming_daily_limit = ? WHERE id = ?', [limit, id])
+    return { message: 'Limite de aquecimento atualizado', warming_daily_limit: limit }
   })
 
   app.post('/whatsapp/sessions', {

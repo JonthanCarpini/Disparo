@@ -145,6 +145,15 @@ export default function CampaignsPage() {
               : c,
           ),
         )
+        if (msg.event === 'update' && msg.reason === 'no_sessions_available') {
+          toast.error('Campanha pausada: todos os números foram banidos ou desconectados!', { duration: 8000 })
+        }
+        if (msg.event === 'update' && msg.reason === 'session_limit_reached') {
+          toast.warning('Campanha pausada: limite diário por número atingido.')
+        }
+        if (msg.event === 'update' && msg.reason === 'max_per_day_reached') {
+          toast.warning('Campanha pausada: limite diário de disparos atingido.')
+        }
       }
     }
     ws.onclose = () => setTimeout(connectWS, 3000)

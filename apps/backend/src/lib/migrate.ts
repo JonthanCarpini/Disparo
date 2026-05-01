@@ -122,6 +122,7 @@ export async function runMigrations() {
   await ensureColumn(db, 'campaigns', 'max_per_session_day', 'INT NOT NULL DEFAULT 0')
   await ensureColumn(db, 'campaigns', 'start_time', "VARCHAR(5) NULL DEFAULT NULL")
   await ensureColumn(db, 'campaigns', 'end_time', "VARCHAR(5) NULL DEFAULT NULL")
+  await ensureColumn(db, 'whatsapp_sessions', 'warming_daily_limit', 'INT NOT NULL DEFAULT 0')
 
   await ensureColumnType(db, 'ai_configs', 'provider', "ENUM('openai','gemini','groq','mistral') NOT NULL")
   await ensureColumnType(db, 'campaigns', 'ai_provider', "ENUM('openai','gemini','groq','mistral') NOT NULL")

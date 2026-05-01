@@ -111,6 +111,17 @@ async function processCampaign(campaignId: string) {
     throw new Error('Nenhuma sessão WhatsApp conectada para esta campanha')
   }
 
+  const sessionWarmingLimits = new Map<string, number>()
+  if (sessionIds.length > 0) {
+    const warmingRows = await query<{ id: string; warming_daily_limit: number }>(
+      `SELECT id, warming_daily_limit FROM whatsapp_sessions WHERE id IN (${sessionIds.map(() => '?').join(',')})`,
+      sessionIds,
+    )
+    for (const row of warmingRows) {
+      sessionWarmingLimits.set(row.id, row.warming_daily_limit)
+    }
+  }
+
   // Resume: pula contatos já enviados com sucesso ou marcados sem WhatsApp
   const contacts = await query<Contact>(
     `SELECT c.id, c.phone, c.jid, c.name
@@ -185,18 +196,29 @@ async function processCampaign(campaignId: string) {
       break
     }
 
-    let availableSessions = connectedSessions
-    if (campaign.max_per_session_day > 0) {
-      availableSessions = connectedSessions.filter(
-        (sid) => (sessionDailySent.get(sid) ?? 0) < campaign.max_per_session_day,
-      )
-      if (availableSessions.length === 0) {
-        await query("UPDATE campaigns SET status = 'paused' WHERE id = ?", [campaignId])
-        campaignWsEmitter.emit('campaign:update', { campaignId, status: 'paused', reason: 'session_limit_reached' })
-        logger.info({ campaignId }, 'Limite diário por sessão atingido em todas as sessões')
-        interrupted = true
-        break
-      }
+    const liveSessions = sessionIds.filter((sid) => baileysService.isConnected(sid))
+    if (liveSessions.length === 0) {
+      await query("UPDATE campaigns SET status = 'paused' WHERE id = ?", [campaignId])
+      campaignWsEmitter.emit('campaign:update', { campaignId, status: 'paused', reason: 'no_sessions_available' })
+      logger.info({ campaignId }, 'Nenhuma sessão disponível (desconectadas ou banidas)')
+      interrupted = true
+      break
+    }
+
+    const availableSessions = liveSessions.filter((sid) => {
+      const warming = sessionWarmingLimits.get(sid) ?? 0
+      const campaignLimit = campaign.max_per_session_day
+      const limits = [warming, campaignLimit].filter((l) => l > 0)
+      const effectiveLimit = limits.length > 0 ? Math.min(...limits) : 0
+      return effectiveLimit === 0 || (sessionDailySent.get(sid) ?? 0) < effectiveLimit
+    })
+
+    if (availableSessions.length === 0) {
+      await query("UPDATE campaigns SET status = 'paused' WHERE id = ?", [campaignId])
+      campaignWsEmitter.emit('campaign:update', { campaignId, status: 'paused', reason: 'session_limit_reached' })
+      logger.info({ campaignId }, 'Limite diário por sessão atingido em todas as sessões')
+      interrupted = true
+      break
     }
 
     const sessionId = availableSessions[sessionIndex % availableSessions.length]
