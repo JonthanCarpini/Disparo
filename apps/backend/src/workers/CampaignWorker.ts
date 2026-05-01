@@ -23,8 +23,11 @@ interface Campaign {
   min_delay: number
   max_delay: number
   max_per_day: number
+  max_per_session_day: number
   daily_sent: number
   last_send_date: string | null
+  start_time: string | null
+  end_time: string | null
   rotate_sessions: number
   session_ids: string
   sent: number
@@ -75,6 +78,20 @@ function randomDelay(min: number, max: number): number {
   return Math.floor(Math.random() * (max - min + 1) + min) * 1000
 }
 
+function isWithinTimeWindow(startTime: string | null, endTime: string | null): boolean {
+  if (!startTime || !endTime) return true
+  const now = new Date()
+  const [sh, sm] = startTime.split(':').map(Number)
+  const [eh, em] = endTime.split(':').map(Number)
+  const nowMins = now.getHours() * 60 + now.getMinutes()
+  const startMins = sh * 60 + sm
+  const endMins = eh * 60 + em
+  if (startMins <= endMins) {
+    return nowMins >= startMins && nowMins < endMins
+  }
+  return nowMins >= startMins || nowMins < endMins
+}
+
 async function processCampaign(campaignId: string) {
   const campaign = await queryOne<Campaign>(
     'SELECT * FROM campaigns WHERE id = ?',
@@ -113,6 +130,7 @@ async function processCampaign(campaignId: string) {
   let sessionIndex = 0
   let sent = campaign.sent || 0
   let failed = campaign.failed || 0
+  let interrupted = false
 
   const today = new Date().toISOString().slice(0, 10)
   let dailySent = campaign.last_send_date === today ? (campaign.daily_sent || 0) : 0
@@ -123,6 +141,21 @@ async function processCampaign(campaignId: string) {
     )
   }
 
+  // Restore per-session daily sent from logs (for resume accuracy)
+  const sessionDailySent = new Map<string, number>()
+  if (campaign.max_per_session_day > 0) {
+    const sessionStats = await query<{ session_id: string; count: number }>(
+      `SELECT session_id, COUNT(*) as count
+       FROM campaign_logs
+       WHERE campaign_id = ? AND DATE(sent_at) = ? AND status = 'sent'
+       GROUP BY session_id`,
+      [campaignId, today],
+    )
+    for (const s of sessionStats) {
+      sessionDailySent.set(s.session_id, s.count)
+    }
+  }
+
   for (const contact of contacts) {
     const currentCampaign = await queryOne<{ status: string }>(
       'SELECT status FROM campaigns WHERE id = ?',
@@ -130,6 +163,15 @@ async function processCampaign(campaignId: string) {
     )
     if (currentCampaign?.status === 'paused' || currentCampaign?.status === 'failed') {
       logger.info({ campaignId }, 'Campanha pausada ou cancelada')
+      interrupted = true
+      break
+    }
+
+    if (!isWithinTimeWindow(campaign.start_time, campaign.end_time)) {
+      await query("UPDATE campaigns SET status = 'paused' WHERE id = ?", [campaignId])
+      campaignWsEmitter.emit('campaign:update', { campaignId, status: 'paused', reason: 'outside_time_window' })
+      logger.info({ campaignId }, 'Campanha pausada: fora do horário permitido')
+      interrupted = true
       break
     }
 
@@ -139,11 +181,27 @@ async function processCampaign(campaignId: string) {
         campaignId, status: 'paused', reason: 'max_per_day_reached',
       })
       logger.info({ campaignId, dailySent, max: campaign.max_per_day }, 'Limite diário atingido')
+      interrupted = true
       break
     }
 
-    const sessionId = connectedSessions[sessionIndex % connectedSessions.length]
+    let availableSessions = connectedSessions
+    if (campaign.max_per_session_day > 0) {
+      availableSessions = connectedSessions.filter(
+        (sid) => (sessionDailySent.get(sid) ?? 0) < campaign.max_per_session_day,
+      )
+      if (availableSessions.length === 0) {
+        await query("UPDATE campaigns SET status = 'paused' WHERE id = ?", [campaignId])
+        campaignWsEmitter.emit('campaign:update', { campaignId, status: 'paused', reason: 'session_limit_reached' })
+        logger.info({ campaignId }, 'Limite diário por sessão atingido em todas as sessões')
+        interrupted = true
+        break
+      }
+    }
+
+    const sessionId = availableSessions[sessionIndex % availableSessions.length]
     if (campaign.rotate_sessions) sessionIndex++
+    sessionDailySent.set(sessionId, (sessionDailySent.get(sessionId) ?? 0) + 1)
 
     const isLastContact = contact === contacts[contacts.length - 1]
     const delayMs = isLastContact ? 0 : randomDelay(campaign.min_delay, campaign.max_delay)
@@ -257,10 +315,14 @@ async function processCampaign(campaignId: string) {
     }
   }
 
-  await query(
-    "UPDATE campaigns SET status = 'completed', sent = ?, failed = ? WHERE id = ?",
-    [sent, failed, campaignId],
-  )
-  campaignWsEmitter.emit('campaign:update', { campaignId, status: 'completed', sent, failed })
-  logger.info({ campaignId, sent, failed }, 'Campanha concluída')
+  if (!interrupted) {
+    await query(
+      "UPDATE campaigns SET status = 'completed', sent = ?, failed = ? WHERE id = ?",
+      [sent, failed, campaignId],
+    )
+    campaignWsEmitter.emit('campaign:update', { campaignId, status: 'completed', sent, failed })
+    logger.info({ campaignId, sent, failed }, 'Campanha concluída')
+  } else {
+    await query('UPDATE campaigns SET sent = ?, failed = ? WHERE id = ?', [sent, failed, campaignId])
+  }
 }

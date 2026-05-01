@@ -71,6 +71,9 @@ export async function campaignsRoutes(app: FastifyInstance) {
       min_delay = '5',
       max_delay = '15',
       max_per_day = '0',
+      max_per_session_day = '0',
+      start_time,
+      end_time,
       rotate_sessions = 'true',
       session_ids,
       scheduled_at,
@@ -89,12 +92,15 @@ export async function campaignsRoutes(app: FastifyInstance) {
     await query(
       `INSERT INTO campaigns
         (id, name, list_id, ai_provider, ai_model, prompt, media_type, media_path,
-         min_delay, max_delay, max_per_day, rotate_sessions, session_ids, scheduled_at, total, status)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'draft')`,
+         min_delay, max_delay, max_per_day, max_per_session_day, start_time, end_time,
+         rotate_sessions, session_ids, scheduled_at, total, status)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'draft')`,
       [
         id, name, list_id, ai_provider, ai_model || null, prompt,
         media_type, mediaPath, parseInt(min_delay), parseInt(max_delay),
         parseInt(max_per_day) || 0,
+        parseInt(max_per_session_day) || 0,
+        start_time || null, end_time || null,
         rotate_sessions === 'true' ? 1 : 0, session_ids,
         scheduled_at || null, listInfo?.total || 0,
       ],
@@ -269,10 +275,12 @@ export async function campaignsRoutes(app: FastifyInstance) {
 
     const {
       name, ai_provider, ai_model, prompt,
-      min_delay, max_delay, max_per_day, rotate_sessions, session_ids,
+      min_delay, max_delay, max_per_day, max_per_session_day,
+      start_time, end_time, rotate_sessions, session_ids,
     } = req.body as {
       name?: string; ai_provider?: string; ai_model?: string; prompt?: string
-      min_delay?: number; max_delay?: number; max_per_day?: number
+      min_delay?: number; max_delay?: number; max_per_day?: number; max_per_session_day?: number
+      start_time?: string; end_time?: string
       rotate_sessions?: boolean; session_ids?: string
     }
 
@@ -285,6 +293,9 @@ export async function campaignsRoutes(app: FastifyInstance) {
     if (min_delay !== undefined) { updates.push('min_delay = ?'); values.push(Number(min_delay)) }
     if (max_delay !== undefined) { updates.push('max_delay = ?'); values.push(Number(max_delay)) }
     if (max_per_day !== undefined) { updates.push('max_per_day = ?'); values.push(Number(max_per_day)) }
+    if (max_per_session_day !== undefined) { updates.push('max_per_session_day = ?'); values.push(Number(max_per_session_day)) }
+    if (start_time !== undefined) { updates.push('start_time = ?'); values.push(start_time || null) }
+    if (end_time !== undefined) { updates.push('end_time = ?'); values.push(end_time || null) }
     if (rotate_sessions !== undefined) { updates.push('rotate_sessions = ?'); values.push(rotate_sessions ? 1 : 0) }
     if (session_ids !== undefined) { updates.push('session_ids = ?'); values.push(session_ids) }
 

@@ -81,11 +81,14 @@ interface Campaign {
   list_name?: string
   list_id?: string
   max_per_day?: number
+  max_per_session_day?: number
   daily_sent?: number
   min_delay?: number
   max_delay?: number
   rotate_sessions?: boolean | number
   session_ids?: string | string[]
+  start_time?: string | null
+  end_time?: string | null
 }
 
 interface Session { id: string; name: string; status: string }
@@ -108,6 +111,7 @@ export default function CampaignsPage() {
   const [editForm, setEditForm] = useState({
     name: '', list_id: '', ai_provider: 'openai', ai_model: '',
     prompt: '', min_delay: '5', max_delay: '15', max_per_day: '0',
+    max_per_session_day: '0', start_time: '', end_time: '',
     rotate_sessions: true, session_ids: [] as string[],
   })
   const [editSubmitting, setEditSubmitting] = useState(false)
@@ -117,7 +121,8 @@ export default function CampaignsPage() {
   const [form, setForm] = useState({
     name: '', list_id: '', ai_provider: 'openai', ai_model: '',
     prompt: '', media_type: 'none', min_delay: '5', max_delay: '15',
-    max_per_day: '0',
+    max_per_day: '0', max_per_session_day: '0',
+    start_time: '', end_time: '',
     rotate_sessions: true, session_ids: [] as string[],
   })
 
@@ -197,7 +202,7 @@ export default function CampaignsPage() {
       await api.post('/campaigns', fd, { headers: { 'Content-Type': 'multipart/form-data' } })
       toast.success('Campanha iniciada!')
       setShowForm(false)
-      setForm({ name: '', list_id: '', ai_provider: aiConfigs[0]?.provider || 'openai', ai_model: '', prompt: '', media_type: 'none', min_delay: '5', max_delay: '15', max_per_day: '0', rotate_sessions: true, session_ids: [] })
+      setForm({ name: '', list_id: '', ai_provider: aiConfigs[0]?.provider || 'openai', ai_model: '', prompt: '', media_type: 'none', min_delay: '5', max_delay: '15', max_per_day: '0', max_per_session_day: '0', start_time: '', end_time: '', rotate_sessions: true, session_ids: [] })
       loadAll()
     } catch {
       toast.error('Erro ao criar campanha')
@@ -275,6 +280,9 @@ export default function CampaignsPage() {
       min_delay: String(campaign.min_delay ?? 5),
       max_delay: String(campaign.max_delay ?? 15),
       max_per_day: String(campaign.max_per_day ?? 0),
+      max_per_session_day: String(campaign.max_per_session_day ?? 0),
+      start_time: campaign.start_time || '',
+      end_time: campaign.end_time || '',
       rotate_sessions: Boolean(campaign.rotate_sessions),
       session_ids: sessionIds,
     })
@@ -303,6 +311,9 @@ export default function CampaignsPage() {
         min_delay: parseInt(editForm.min_delay),
         max_delay: parseInt(editForm.max_delay),
         max_per_day: parseInt(editForm.max_per_day),
+        max_per_session_day: parseInt(editForm.max_per_session_day),
+        start_time: editForm.start_time || null,
+        end_time: editForm.end_time || null,
         rotate_sessions: editForm.rotate_sessions,
         session_ids: JSON.stringify(editForm.session_ids),
       })
@@ -449,11 +460,30 @@ export default function CampaignsPage() {
                   <input type="number" min="5" value={form.max_delay} onChange={(e) => setForm({ ...form, max_delay: e.target.value })}
                     className="w-full px-3 py-2.5 bg-muted border border-border rounded-xl text-foreground focus:outline-none focus:ring-2 focus:ring-primary" />
                 </div>
-                <div className="col-span-2">
-                  <label className="block text-sm text-muted-foreground mb-1.5">Máximo de disparos por dia <span className="text-xs">(0 = sem limite; ao atingir, pausa automaticamente)</span></label>
+                <div>
+                  <label className="block text-sm text-muted-foreground mb-1.5">Máximo por dia (total) <span className="text-xs">(0 = sem limite)</span></label>
                   <input type="number" min="0" value={form.max_per_day}
                     onChange={(e) => setForm({ ...form, max_per_day: e.target.value })}
+                    placeholder="Ex: 300"
+                    className="w-full px-3 py-2.5 bg-muted border border-border rounded-xl text-foreground focus:outline-none focus:ring-2 focus:ring-primary" />
+                </div>
+                <div>
+                  <label className="block text-sm text-muted-foreground mb-1.5">Máximo por WhatsApp por dia <span className="text-xs">(0 = sem limite)</span></label>
+                  <input type="number" min="0" value={form.max_per_session_day}
+                    onChange={(e) => setForm({ ...form, max_per_session_day: e.target.value })}
                     placeholder="Ex: 100"
+                    className="w-full px-3 py-2.5 bg-muted border border-border rounded-xl text-foreground focus:outline-none focus:ring-2 focus:ring-primary" />
+                </div>
+                <div>
+                  <label className="block text-sm text-muted-foreground mb-1.5">Horário de início <span className="text-xs">(deixe vazio = sem restrição)</span></label>
+                  <input type="time" value={form.start_time}
+                    onChange={(e) => setForm({ ...form, start_time: e.target.value })}
+                    className="w-full px-3 py-2.5 bg-muted border border-border rounded-xl text-foreground focus:outline-none focus:ring-2 focus:ring-primary" />
+                </div>
+                <div>
+                  <label className="block text-sm text-muted-foreground mb-1.5">Horário de término</label>
+                  <input type="time" value={form.end_time}
+                    onChange={(e) => setForm({ ...form, end_time: e.target.value })}
                     className="w-full px-3 py-2.5 bg-muted border border-border rounded-xl text-foreground focus:outline-none focus:ring-2 focus:ring-primary" />
                 </div>
                 <div>
@@ -608,9 +638,25 @@ export default function CampaignsPage() {
                   <input type="number" min="5" value={editForm.max_delay} onChange={(e) => setEditForm({ ...editForm, max_delay: e.target.value })}
                     className="w-full px-3 py-2.5 bg-muted border border-border rounded-xl text-foreground focus:outline-none focus:ring-2 focus:ring-primary" />
                 </div>
-                <div className="col-span-2">
-                  <label className="block text-sm text-muted-foreground mb-1.5">Máximo de disparos por dia <span className="text-xs">(0 = sem limite)</span></label>
+                <div>
+                  <label className="block text-sm text-muted-foreground mb-1.5">Máximo por dia (total) <span className="text-xs">(0 = sem limite)</span></label>
                   <input type="number" min="0" value={editForm.max_per_day} onChange={(e) => setEditForm({ ...editForm, max_per_day: e.target.value })}
+                    className="w-full px-3 py-2.5 bg-muted border border-border rounded-xl text-foreground focus:outline-none focus:ring-2 focus:ring-primary" />
+                </div>
+                <div>
+                  <label className="block text-sm text-muted-foreground mb-1.5">Máximo por WhatsApp por dia <span className="text-xs">(0 = sem limite)</span></label>
+                  <input type="number" min="0" value={editForm.max_per_session_day} onChange={(e) => setEditForm({ ...editForm, max_per_session_day: e.target.value })}
+                    placeholder="Ex: 100"
+                    className="w-full px-3 py-2.5 bg-muted border border-border rounded-xl text-foreground focus:outline-none focus:ring-2 focus:ring-primary" />
+                </div>
+                <div>
+                  <label className="block text-sm text-muted-foreground mb-1.5">Horário de início <span className="text-xs">(vazio = sem restrição)</span></label>
+                  <input type="time" value={editForm.start_time} onChange={(e) => setEditForm({ ...editForm, start_time: e.target.value })}
+                    className="w-full px-3 py-2.5 bg-muted border border-border rounded-xl text-foreground focus:outline-none focus:ring-2 focus:ring-primary" />
+                </div>
+                <div>
+                  <label className="block text-sm text-muted-foreground mb-1.5">Horário de término</label>
+                  <input type="time" value={editForm.end_time} onChange={(e) => setEditForm({ ...editForm, end_time: e.target.value })}
                     className="w-full px-3 py-2.5 bg-muted border border-border rounded-xl text-foreground focus:outline-none focus:ring-2 focus:ring-primary" />
                 </div>
               </div>
