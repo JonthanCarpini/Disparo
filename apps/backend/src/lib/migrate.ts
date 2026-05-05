@@ -127,6 +127,7 @@ export async function runMigrations() {
   await ensureColumnType(db, 'ai_configs', 'provider', "ENUM('openai','gemini','groq','mistral') NOT NULL")
   await ensureColumnType(db, 'campaigns', 'ai_provider', "ENUM('openai','gemini','groq','mistral') NOT NULL")
 
+  await ensureColumnType(db, 'contact_lists', 'source', "ENUM('csv_import','group_extract','contact_extract','n8n_group_import') DEFAULT 'csv_import'")
   await ensureColumn(db, 'contact_lists', 'source_jid', 'VARCHAR(120) NULL DEFAULT NULL')
   await ensureIndex(db, 'contact_lists', 'idx_source_jid', 'source_jid')
 
