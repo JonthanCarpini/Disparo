@@ -28,11 +28,11 @@ function normalizeFromJid(jid: string): { phone: string; jid: string } | null {
 
 function normalizeParticipant(p: ImportParticipant): { phone: string; jid: string; name: string } | null {
   let result: { phone: string; jid: string } | null = null
-  if (p.jid) result = normalizeFromJid(p.jid)
-  if (!result && p.phone) {
+  if (p.phone) {
     const num = p.phone.replace(/\D/g, '')
     if (PHONE_RE.test(num)) result = { phone: num, jid: `${num}@s.whatsapp.net` }
   }
+  if (!result && p.jid) result = normalizeFromJid(p.jid)
   if (!result) return null
   return { ...result, name: (p.name || '').toString().slice(0, 200) }
 }

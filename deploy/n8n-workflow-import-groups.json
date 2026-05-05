@@ -70,7 +70,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const data = $input.first().json.data || $input.first().json;\nconst groupJid = data.id;\nconst subject = data.subject || groupJid;\nconst participants = Array.isArray(data.participants) ? data.participants : [];\n\nconst mapped = participants\n  .map(p => ({\n    phone: (p.phoneNumber || '').toString(),\n    jid: (p.id || '').toString(),\n    name: (p.name || p.pushName || '').toString()\n  }))\n  .filter(p => p.phone || p.jid);\n\nreturn [{\n  json: {\n    groupJid,\n    subject,\n    participants: mapped\n  }\n}];"
+        "jsCode": "const data = $input.first().json.data || $input.first().json;\nconst groupJid = data.id;\nconst subject = data.subject || groupJid;\nconst participants = Array.isArray(data.participants) ? data.participants : [];\n\nconst mapped = participants\n  .map(p => {\n    const hasPhone = p.phoneNumber && p.phoneNumber.includes('@s.whatsapp.net');\n    return {\n      phone: hasPhone ? p.phoneNumber : '',\n      jid: hasPhone ? p.phoneNumber : (p.id || ''),\n      name: (p.name || p.pushName || '').toString()\n    };\n  })\n  .filter(p => p.phone || p.jid);\n\nreturn [{\n  json: {\n    groupJid,\n    subject,\n    participants: mapped\n  }\n}];"
       },
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
