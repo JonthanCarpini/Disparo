@@ -171,6 +171,32 @@ Features adicionadas após o fix do LID:
 - 8 modelos disponíveis no dropdown: `mistral-large-latest`, `mistral-medium-latest`, `mistral-small-latest`, `ministral-8b-latest`, `ministral-3b-latest`, `open-mistral-7b`, `open-mixtral-8x7b`, `open-mixtral-8x22b`
 - TTS continua **exclusivamente OpenAI** (único com suporte nativo). Lógica de fallback simplificada em `generateAudio()`
 
+### 3.8. Integração n8n + Evolution API + API Keys (Mai/2026)
+
+Como a extração de grupos via Baileys ainda é limitada por LID/sync, foi instalada a **Evolution API** (porta `:8080`) + **n8n** (porta `:5678`) na mesma VPS para extrair contatos de grupos via outra instância WA. O n8n empurra os contatos para o Disparo via endpoint dedicado.
+
+**Sistema de API Keys** (`apps/backend/src/lib/apiKeyAuth.ts`):
+- Tabela `api_keys` (id, label, key_hash SHA-256, key_preview, enabled, last_used_at)
+- Formato da chave: `dsp_<base64url-32bytes>` (256 bits de entropia → SHA-256 sem bcrypt; bcrypt só vale para entradas de baixa entropia como senhas)
+- Middleware `apiKeyAuth(req, reply)` valida header `X-API-Key`, atualiza `last_used_at` async (fire-and-forget)
+- Plaintext mostrado **uma única vez** após geração
+
+**Endpoint público** `POST /api/integrations/import-group` (auth `X-API-Key`):
+- Payload: `{ groupJid, subject?, participants: [{phone?, jid?, name?}] }`
+- **Upsert por `source_jid`**: nova coluna em `contact_lists` com índice `idx_source_jid`. Mesmo `groupJid` reutiliza a lista existente, atualiza nome, adiciona contatos novos (dedupe por `jid`), preserva `wa_exists` já validados
+- Normalização automática: aceita `jid` puro (`@s.whatsapp.net`/`@lid`) ou `phone`; valida com regex `^\d{10,15}$`
+- Endpoints CRUD em `/integrations/keys` (JWT) para gestão
+
+**Workflow n8n** (`deploy/n8n-workflow-import-groups.json`):
+- Buscar todos os grupos → `splitInBatches` → detalhes do grupo → montar payload → POST para Disparo → wait 3s → loop
+- Substituiu o fluxo antigo de "agregar + gerar CSV" por chamada HTTP direta
+
+**Frontend** — `app/dashboard/integrations/page.tsx`:
+- Lista de chaves com status, last_used_at, toggle enable/disable, delete
+- Modal de criação com label
+- Modal de exibição da chave gerada (com botão copiar e aviso "só mostrada uma vez")
+- Documentação inline do endpoint para copy-paste no n8n
+
 ---
 
 ## 4. Arquivos Críticos
@@ -227,6 +253,17 @@ Worker BullMQ que processa filas de campanhas. Para cada contato:
 Provedores: OpenAI (SDK `openai`), Gemini (SDK `@google/generative-ai`), Groq (SDK `groq-sdk`), Mistral (`fetch` direto).
 Dispatcher em `generateMessage()` por `if/else`. Próxima refatoração: extrair `AIProviderAdapter` interface + Map.
 
+### `apps/backend/src/lib/apiKeyAuth.ts`
+
+- `generateApiKey()` — gera plain `dsp_<base64url-32bytes>` + hash SHA-256 + preview (`dsp_xxxxx...xxxx`)
+- `hashApiKey(plain)` — SHA-256 (mesmo algoritmo do banco)
+- `apiKeyAuth(req, reply)` — middleware Fastify; valida header `X-API-Key` contra `key_hash`; atualiza `last_used_at` async; retorna 401 se ausente/inválida/desabilitada
+
+### `apps/backend/src/routes/integrations.ts`
+
+- `GET/POST/PUT/DELETE /integrations/keys` (JWT) — gestão de chaves
+- `POST /integrations/import-group` (X-API-Key) — upsert lista por `source_jid`, dedupe contatos por `jid`, batch insert de 500
+
 ---
 
 ## 5. Banco de Dados
@@ -268,6 +305,25 @@ campaign_logs (
 ai_configs (
   provider ENUM('openai','gemini','groq','mistral') UNIQUE,
   api_key VARCHAR(500), model VARCHAR(100), enabled TINYINT(1)
+)
+
+contact_lists (
+  id VARCHAR(36) PK,
+  name VARCHAR(200),
+  source VARCHAR(50),         -- 'csv_import' | 'group_extract' | 'contact_extract' | 'n8n_group_import'
+  source_jid VARCHAR(120),    -- JID do grupo WA (para upsert via n8n) — INDEX idx_source_jid
+  total INT,
+  created_at TIMESTAMP
+)
+
+api_keys (
+  id INT AUTO_INCREMENT PK,
+  label VARCHAR(120),
+  key_hash VARCHAR(255),      -- SHA-256 da chave plain
+  key_preview VARCHAR(20),    -- 'dsp_xxxxx...xxxx' (display)
+  enabled TINYINT(1),
+  last_used_at TIMESTAMP NULL,
+  created_at TIMESTAMP
 )
 ```
 
@@ -337,6 +393,7 @@ docker exec disparo_mysql mysql -udisparo -pDisparo@2026 disparo_whats -e "SELEC
 - [x] ~~**Limite diário** com pause automático~~ — feito (`max_per_day`)
 - [x] ~~**Status por contato** (aguardando/enviado/falhou)~~ — feito
 - [x] ~~**Mistral AI** como provedor~~ — feito
+- [x] ~~**Integração n8n / Evolution API**~~ — feito (`/integrations/import-group` + sistema de API keys)
 - [ ] **Aquecimento de chip** (warming): primeiras 24h enviar só para contatos da agenda
 - [ ] **Detecção de ban** automática (tratar `connection.update` com `loggedOut`, marcar sessão)
 - [ ] **Rotação inteligente** de sessões baseada em taxa de erro
@@ -347,3 +404,6 @@ docker exec disparo_mysql mysql -udisparo -pDisparo@2026 disparo_whats -e "SELEC
 - [ ] **Verificação de números em background job** (hoje bloqueia HTTP até terminar; problemático para listas com 5k+)
 - [ ] **Busca por telefone/nome** no modal de detalhes da campanha
 - [ ] **Variação de mensagens** via templates + IA (já parcial via `prompt`)
+- [ ] **Rate limiting** no `/integrations/import-group` (`@fastify/rate-limit` por `key_id`)
+- [ ] **Unique constraint** em `contacts(list_id, jid)` para usar `INSERT ... ON DUPLICATE KEY UPDATE` em vez do dedupe em memória atual
+- [ ] **Tabela `integration_logs`** (auditoria de chamadas externas: api_key_id, payload_size, result, ts)
