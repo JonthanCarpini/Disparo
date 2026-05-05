@@ -1,0 +1,150 @@
+{
+  "name": "Extrator de Números WhatsApp -> Disparo",
+  "nodes": [
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [240, 300],
+      "id": "trigger-1",
+      "name": "Iniciar"
+    },
+    {
+      "parameters": {
+        "resource": "groups-api",
+        "operation": "fetch-groups",
+        "instanceName": "Take Gourmet",
+        "searchMethod": "fetchAll"
+      },
+      "type": "n8n-nodes-evolution-api.evolutionApi",
+      "typeVersion": 1,
+      "position": [460, 300],
+      "id": "fetch-all-1",
+      "name": "Buscar Todos os Grupos",
+      "credentials": {
+        "evolutionApi": {
+          "id": "4XaXsrdXmENbqQPM",
+          "name": "Evolution account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const groups = $input.first().json.data;\nif (!groups || !Array.isArray(groups)) {\n  throw new Error('Resposta inesperada da API: campo data ausente');\n}\nreturn groups.map(group => ({\n  json: {\n    groupJid: group.id,\n    subject: group.subject\n  }\n}));"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [680, 300],
+      "id": "extract-ids-1",
+      "name": "Extrair IDs dos Grupos"
+    },
+    {
+      "parameters": {
+        "options": { "reset": false }
+      },
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [900, 300],
+      "id": "loop-1",
+      "name": "Loop Over Items"
+    },
+    {
+      "parameters": {
+        "resource": "groups-api",
+        "operation": "fetch-groups",
+        "instanceName": "Take Gourmet",
+        "searchMethod": "groupJid",
+        "groupJid": "={{ $json.groupJid }}"
+      },
+      "type": "n8n-nodes-evolution-api.evolutionApi",
+      "typeVersion": 1,
+      "position": [1120, 380],
+      "id": "fetch-detail-1",
+      "name": "Detalhes do Grupo",
+      "credentials": {
+        "evolutionApi": {
+          "id": "4XaXsrdXmENbqQPM",
+          "name": "Evolution account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const data = $input.first().json.data || $input.first().json;\nconst groupJid = data.id;\nconst subject = data.subject || groupJid;\nconst participants = Array.isArray(data.participants) ? data.participants : [];\n\nconst mapped = participants\n  .map(p => ({\n    phone: (p.phoneNumber || '').toString(),\n    jid: (p.id || '').toString(),\n    name: (p.name || p.pushName || '').toString()\n  }))\n  .filter(p => p.phone || p.jid);\n\nreturn [{\n  json: {\n    groupJid,\n    subject,\n    participants: mapped\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1340, 380],
+      "id": "build-payload-1",
+      "name": "Montar Payload"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://178.238.236.103:3001/api/integrations/import-group",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "X-API-Key", "value": "COLE_SUA_API_KEY_AQUI" },
+            { "name": "Content-Type", "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json) }}",
+        "options": {
+          "timeout": 60000
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1560, 380],
+      "id": "import-1",
+      "name": "Importar para Disparo"
+    },
+    {
+      "parameters": { "amount": 3 },
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [1780, 380],
+      "id": "wait-1",
+      "name": "Wait",
+      "webhookId": "wait-import"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Iniciar": {
+      "main": [[{ "node": "Buscar Todos os Grupos", "type": "main", "index": 0 }]]
+    },
+    "Buscar Todos os Grupos": {
+      "main": [[{ "node": "Extrair IDs dos Grupos", "type": "main", "index": 0 }]]
+    },
+    "Extrair IDs dos Grupos": {
+      "main": [[{ "node": "Loop Over Items", "type": "main", "index": 0 }]]
+    },
+    "Loop Over Items": {
+      "main": [
+        [],
+        [{ "node": "Detalhes do Grupo", "type": "main", "index": 0 }]
+      ]
+    },
+    "Detalhes do Grupo": {
+      "main": [[{ "node": "Montar Payload", "type": "main", "index": 0 }]]
+    },
+    "Montar Payload": {
+      "main": [[{ "node": "Importar para Disparo", "type": "main", "index": 0 }]]
+    },
+    "Importar para Disparo": {
+      "main": [[{ "node": "Wait", "type": "main", "index": 0 }]]
+    },
+    "Wait": {
+      "main": [[{ "node": "Loop Over Items", "type": "main", "index": 0 }]]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "tags": []
+}
