@@ -13,6 +13,7 @@ import {
   LogOut,
   MessageSquareText,
   ChevronRight,
+  Plug,
 } from 'lucide-react'
 import { useAuthStore } from '@/store/auth'
 
@@ -22,6 +23,7 @@ const NAV_ITEMS = [
   { href: '/dashboard/contacts', label: 'Contatos', icon: Users },
   { href: '/dashboard/campaigns', label: 'Campanhas', icon: Send },
   { href: '/dashboard/ai', label: 'Inteligência IA', icon: Bot },
+  { href: '/dashboard/integrations', label: 'Integrações', icon: Plug },
   { href: '/dashboard/settings', label: 'Configurações', icon: Settings },
 ]
 

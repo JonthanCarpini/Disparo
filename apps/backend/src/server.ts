@@ -14,6 +14,7 @@ import { whatsappRoutes } from './routes/whatsapp'
 import { contactsRoutes } from './routes/contacts'
 import { campaignsRoutes } from './routes/campaigns'
 import { aiRoutes } from './routes/ai'
+import { integrationsRoutes } from './routes/integrations'
 
 const app = Fastify({
   logger: false,
@@ -60,6 +61,7 @@ async function bootstrap() {
   await app.register(contactsRoutes, { prefix: '/api' })
   await app.register(campaignsRoutes, { prefix: '/api' })
   await app.register(aiRoutes, { prefix: '/api' })
+  await app.register(integrationsRoutes, { prefix: '/api' })
 
   const REDIS_URL = process.env.REDIS_URL || 'redis://redis:6379'
   initCampaignQueue(REDIS_URL)

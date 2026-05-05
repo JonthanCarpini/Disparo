@@ -127,6 +127,23 @@ export async function runMigrations() {
   await ensureColumnType(db, 'ai_configs', 'provider', "ENUM('openai','gemini','groq','mistral') NOT NULL")
   await ensureColumnType(db, 'campaigns', 'ai_provider', "ENUM('openai','gemini','groq','mistral') NOT NULL")
 
+  await ensureColumn(db, 'contact_lists', 'source_jid', 'VARCHAR(120) NULL DEFAULT NULL')
+  await ensureIndex(db, 'contact_lists', 'idx_source_jid', 'source_jid')
+
+  await db.execute(`
+    CREATE TABLE IF NOT EXISTS api_keys (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      label VARCHAR(120) NOT NULL,
+      key_hash VARCHAR(255) NOT NULL,
+      key_preview VARCHAR(20) NOT NULL,
+      enabled TINYINT(1) NOT NULL DEFAULT 1,
+      last_used_at TIMESTAMP NULL DEFAULT NULL,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      INDEX idx_key_hash (key_hash),
+      INDEX idx_enabled (enabled)
+    )
+  `)
+
   await db.execute(`
     CREATE TABLE IF NOT EXISTS ai_provider_keys (
       id INT AUTO_INCREMENT PRIMARY KEY,
@@ -158,6 +175,23 @@ async function ensureColumnType(db: ReturnType<typeof getDb>, table: string, col
     await db.execute(`ALTER TABLE \`${table}\` MODIFY COLUMN \`${column}\` ${definition}`)
   } catch (err) {
     logger.warn({ err: String(err) }, `ensureColumnType falhou para ${table}.${column}`)
+  }
+}
+
+async function ensureIndex(
+  db: ReturnType<typeof getDb>,
+  table: string,
+  indexName: string,
+  columns: string,
+) {
+  const [rows] = await db.execute(
+    `SELECT INDEX_NAME FROM information_schema.STATISTICS
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND INDEX_NAME = ?`,
+    [table, indexName],
+  )
+  if (Array.isArray(rows) && rows.length === 0) {
+    await db.execute(`ALTER TABLE \`${table}\` ADD INDEX \`${indexName}\` (${columns})`)
+    logger.info(`Índice ${table}.${indexName} adicionado`)
   }
 }
 

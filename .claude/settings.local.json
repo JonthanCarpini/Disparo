@@ -1,0 +1,25 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(ssh -i ~/.ssh/disparo_vps -o StrictHostKeyChecking=no root@178.238.236.103 'docker exec disparo_mysql mysql -udisparo -pDisparo@2026 disparo_whats -e \"SELECT provider, enabled, LENGTH\\(api_key\\) as key_len FROM ai_configs\"')",
+      "Bash(ssh -i ~/.ssh/disparo_vps -o StrictHostKeyChecking=no root@178.238.236.103 'docker logs disparo_backend 2>&1 | tail -5')",
+      "Bash(ssh -i '~/.ssh/disparo_vps' -o StrictHostKeyChecking=no root@178.238.236.103 ' *)",
+      "Bash(npx tsc *)",
+      "Read(//c/Users/admin/AppData/Local/Temp/claude/c--Users-admin-Documents-Projetos-Disparo-whats/cd3cc34e-a042-46ff-8441-0bbfa65f13c2/tasks/**)",
+      "Bash(ssh -i ~/.ssh/disparo_vps -o StrictHostKeyChecking=no root@178.238.236.103 'docker logs disparo_backend 2>&1 | grep -i \"campaign\\\\|worker\\\\|queue\\\\|bull\\\\|error\\\\|Error\" | tail -40')",
+      "Bash(git commit -m ' *)",
+      "PowerShell($key = \"$env:USERPROFILE\\\\.ssh\\\\disparo_vps\"; C:\\\\Windows\\\\System32\\\\OpenSSH\\\\ssh.exe -i $key -o StrictHostKeyChecking=no root@178.238.236.103 'cd /opt/disparo && git pull && docker compose up -d --build backend web')",
+      "Bash(git push *)",
+      "PowerShell($key = \"$env:USERPROFILE\\\\.ssh\\\\disparo_vps\"; C:\\\\Windows\\\\System32\\\\OpenSSH\\\\ssh.exe -i $key -o StrictHostKeyChecking=no root@178.238.236.103 'docker ps --format \"table {{.Names}}\\\\t{{.Ports}}\\\\t{{.Status}}\" && echo \"---\" && cat /opt/disparo/docker-compose.yml')",
+      "PowerShell($key = \"$env:USERPROFILE\\\\.ssh\\\\disparo_vps\"; C:\\\\Windows\\\\System32\\\\OpenSSH\\\\ssh.exe -i $key -o StrictHostKeyChecking=no root@178.238.236.103 'docker ps && echo \"===\" && cat /opt/disparo/docker-compose.yml')",
+      "PowerShell($key = \"$env:USERPROFILE\\\\.ssh\\\\disparo_vps\"; C:\\\\Windows\\\\System32\\\\OpenSSH\\\\ssh.exe -i $key -o StrictHostKeyChecking=no root@178.238.236.103 'docker ps --filter \"name=tools_\" --format \"table {{.Names}}\\\\t{{.Status}}\\\\t{{.Ports}}\"')",
+      "PowerShell($key = \"$env:USERPROFILE\\\\.ssh\\\\disparo_vps\"; C:\\\\Windows\\\\System32\\\\OpenSSH\\\\ssh.exe -i $key -o StrictHostKeyChecking=no root@178.238.236.103 'docker ps')",
+      "PowerShell($key = \"$env:USERPROFILE\\\\.ssh\\\\disparo_vps\"; C:\\\\Windows\\\\System32\\\\OpenSSH\\\\ssh.exe -i $key -o StrictHostKeyChecking=no root@178.238.236.103 'docker logs tools_evolution --tail 50 2>&1')",
+      "PowerShell($key = \"$env:USERPROFILE\\\\.ssh\\\\disparo_vps\"; C:\\\\Windows\\\\System32\\\\OpenSSH\\\\ssh.exe -i $key -o StrictHostKeyChecking=no root@178.238.236.103 'curl -s http://localhost:8080/instance/fetchInstances -H \"apikey: EvolutionKey@2026\" | head -c 500')",
+      "PowerShell(Get-Content \"$env:TEMP\\\\docker-compose-tools.yml\" | Select-String \"image|LOG_BAILEYS|CONFIG_SESSION\")"
+    ],
+    "additionalDirectories": [
+      "c:\\Users\\admin\\Downloads"
+    ]
+  }
+}
