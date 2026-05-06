@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { useRouter, usePathname } from 'next/navigation'
 import Link from 'next/link'
 import {
@@ -31,11 +31,21 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const router = useRouter()
   const pathname = usePathname()
   const { isAuthenticated, username, logout } = useAuthStore()
+  const [mounted, setMounted] = useState(false)
 
   useEffect(() => {
-    if (!isAuthenticated) router.push('/login')
-  }, [isAuthenticated, router])
+    setMounted(true)
+  }, [])
 
+  useEffect(() => {
+    if (mounted && !isAuthenticated) router.push('/login')
+  }, [mounted, isAuthenticated, router])
+
+  if (!mounted) return (
+    <div className="flex h-screen items-center justify-center bg-background">
+      <div className="w-6 h-6 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+    </div>
+  )
   if (!isAuthenticated) return null
 
   const handleLogout = () => {
