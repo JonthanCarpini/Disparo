@@ -92,6 +92,31 @@ function isWithinTimeWindow(startTime: string | null, endTime: string | null): b
   return nowMins >= startMins || nowMins < endMins
 }
 
+function shouldRetryAI(err: unknown): boolean {
+  const msg = err instanceof Error ? err.message : String(err)
+  if (/429/.test(msg)) return true
+  if (/capacity exceeded/i.test(msg)) return true
+  if (/5\d\d/.test(msg)) return true
+  return false
+}
+
+async function generateWithRetry(provider: AIProvider, prompt: string, name: string, phone: string, model?: string) {
+  const attempts = [0, 2000, 5000] // imediato, 2s, 5s
+  let lastErr: unknown
+  for (let i = 0; i < attempts.length; i++) {
+    if (attempts[i] > 0) {
+      await new Promise((r) => setTimeout(r, attempts[i]))
+    }
+    try {
+      return await generateMessage(provider, prompt, name, phone, model)
+    } catch (err) {
+      lastErr = err
+      if (!shouldRetryAI(err) || i === attempts.length - 1) break
+    }
+  }
+  throw lastErr
+}
+
 async function processCampaign(campaignId: string) {
   const campaign = await queryOne<Campaign>(
     'SELECT * FROM campaigns WHERE id = ?',
@@ -244,7 +269,7 @@ async function processCampaign(campaignId: string) {
     })
 
     try {
-      const message = await generateMessage(
+      const message = await generateWithRetry(
         campaign.ai_provider,
         campaign.prompt,
         contact.name || '',
