@@ -48,6 +48,9 @@ export default function ContactsPage() {
   const [viewContacts, setViewContacts] = useState<ContactRow[]>([])
   const [viewLoading, setViewLoading] = useState(false)
   const [viewSearch, setViewSearch] = useState('')
+  const [verifySession, setVerifySession] = useState('')
+  const [verifying, setVerifying] = useState(false)
+  const [removingInvalid, setRemovingInvalid] = useState(false)
 
   useEffect(() => {
     loadLists()
@@ -107,6 +110,7 @@ export default function ContactsPage() {
     setViewContacts([])
     setViewLoading(true)
     setViewSearch('')
+    setVerifySession('')
     try {
       const res = await api.get(`/contacts/lists/${list.id}`)
       setViewContacts(res.data.contacts)
@@ -114,6 +118,41 @@ export default function ContactsPage() {
       toast.error('Erro ao carregar contatos')
     } finally {
       setViewLoading(false)
+    }
+  }
+
+  const reloadViewContacts = async (listId: string) => {
+    const res = await api.get(`/contacts/lists/${listId}`)
+    setViewContacts(res.data.contacts)
+    loadLists()
+  }
+
+  const handleVerify = async () => {
+    if (!viewingList || !verifySession) return
+    setVerifying(true)
+    try {
+      const res = await api.post(`/contacts/lists/${viewingList.id}/verify-numbers`, { sessionId: verifySession })
+      toast.success(`Verificação concluída: ${res.data.valid} válidos, ${res.data.invalid} inválidos.`)
+      await reloadViewContacts(viewingList.id)
+    } catch {
+      toast.error('Erro ao verificar números')
+    } finally {
+      setVerifying(false)
+    }
+  }
+
+  const handleRemoveInvalid = async () => {
+    if (!viewingList) return
+    if (!confirm('Remover todos os contatos inválidos desta lista?')) return
+    setRemovingInvalid(true)
+    try {
+      const res = await api.delete(`/contacts/lists/${viewingList.id}/invalid`)
+      toast.success(`${res.data.removed} contatos inválidos removidos.`)
+      await reloadViewContacts(viewingList.id)
+    } catch {
+      toast.error('Erro ao remover inválidos')
+    } finally {
+      setRemovingInvalid(false)
     }
   }
 
@@ -184,7 +223,7 @@ export default function ContactsPage() {
               (acc: number, l: ContactList) => acc + l.total, 0,
             )
             toast.success(`Sincronização concluída! ${total.toLocaleString()} contatos no total.`)
-          } else if (attempts >= 36) {
+          } else if (attempts >= 120) {
             clearInterval(poll)
             toast.info('Tempo limite atingido. Atualize a página para ver novos contatos.')
           }
@@ -339,6 +378,58 @@ export default function ContactsPage() {
               </button>
             </div>
 
+            {/* Estatísticas + ações */}
+            {!viewLoading && viewContacts.length > 0 && (
+              <div className="px-5 py-3 border-b border-border shrink-0 space-y-3">
+                <div className="flex items-center justify-between text-xs text-muted-foreground">
+                  <div className="flex gap-3">
+                    <span className="flex items-center gap-1">
+                      <span className="w-1.5 h-1.5 rounded-full bg-green-500 inline-block" />
+                      {viewContacts.filter(c => c.wa_exists === 1).length} válidos
+                    </span>
+                    <span className="flex items-center gap-1">
+                      <span className="w-1.5 h-1.5 rounded-full bg-red-500 inline-block" />
+                      {viewContacts.filter(c => c.wa_exists === 0).length} inválidos
+                    </span>
+                    <span className="flex items-center gap-1">
+                      <span className="w-1.5 h-1.5 rounded-full bg-muted-foreground/40 inline-block" />
+                      {viewContacts.filter(c => c.wa_exists === null).length} não verificados
+                    </span>
+                  </div>
+                </div>
+                <div className="flex gap-2">
+                  <select
+                    value={verifySession}
+                    onChange={(e) => setVerifySession(e.target.value)}
+                    className="flex-1 px-2 py-1.5 bg-muted border border-border rounded-lg text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+                  >
+                    <option value="">Selecione o número...</option>
+                    {connectedSessions.map((s) => (
+                      <option key={s.id} value={s.id}>{s.name}</option>
+                    ))}
+                  </select>
+                  <button
+                    onClick={handleVerify}
+                    disabled={verifying || !verifySession}
+                    className="flex items-center gap-1.5 px-3 py-1.5 bg-primary/10 text-primary hover:bg-primary/20 disabled:opacity-50 rounded-lg text-xs font-medium transition-colors"
+                  >
+                    {verifying ? <Loader2 className="w-3 h-3 animate-spin" /> : <Search className="w-3 h-3" />}
+                    Verificar
+                  </button>
+                  {viewContacts.filter(c => c.wa_exists === 0).length > 0 && (
+                    <button
+                      onClick={handleRemoveInvalid}
+                      disabled={removingInvalid}
+                      className="flex items-center gap-1.5 px-3 py-1.5 bg-destructive/10 text-destructive hover:bg-destructive/20 disabled:opacity-50 rounded-lg text-xs font-medium transition-colors"
+                    >
+                      {removingInvalid ? <Loader2 className="w-3 h-3 animate-spin" /> : <Trash2 className="w-3 h-3" />}
+                      Remover {viewContacts.filter(c => c.wa_exists === 0).length} inválidos
+                    </button>
+                  )}
+                </div>
+              </div>
+            )}
+
             <div className="p-4 border-b border-border shrink-0">
               <div className="relative">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
@@ -386,18 +477,7 @@ export default function ContactsPage() {
               )}
             </div>
 
-            <div className="p-4 border-t border-border shrink-0 flex items-center justify-between">
-              <p className="text-xs text-muted-foreground flex gap-3">
-                <span className="flex items-center gap-1">
-                  <span className="w-1.5 h-1.5 rounded-full bg-green-500 inline-block" /> Verificado
-                </span>
-                <span className="flex items-center gap-1">
-                  <span className="w-1.5 h-1.5 rounded-full bg-red-500 inline-block" /> Inválido
-                </span>
-                <span className="flex items-center gap-1">
-                  <span className="w-1.5 h-1.5 rounded-full bg-muted-foreground/40 inline-block" /> Não verificado
-                </span>
-              </p>
+            <div className="p-4 border-t border-border shrink-0 flex justify-end">
               <button
                 onClick={() => setViewingList(null)}
                 className="px-4 py-2 bg-muted rounded-xl text-sm hover:bg-muted/80 transition-colors"

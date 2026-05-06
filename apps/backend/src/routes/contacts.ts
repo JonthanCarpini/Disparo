@@ -74,6 +74,21 @@ export async function contactsRoutes(app: FastifyInstance) {
     return { message: 'Lista removida' }
   })
 
+  app.delete('/contacts/lists/:id/invalid', { preHandler: [app.authenticate] }, async (req, reply) => {
+    const { id } = req.params as { id: string }
+    const list = await queryOne('SELECT id FROM contact_lists WHERE id = ?', [id])
+    if (!list) return reply.status(404).send({ error: 'Lista não encontrada' })
+    const result = await query(
+      'DELETE FROM contacts WHERE list_id = ? AND wa_exists = 0',
+      [id],
+    ) as unknown as { affectedRows: number }
+    await query(
+      'UPDATE contact_lists SET total = (SELECT COUNT(*) FROM contacts WHERE list_id = ?) WHERE id = ?',
+      [id, id],
+    )
+    return { removed: result.affectedRows }
+  })
+
   app.post('/contacts/import', { preHandler: [app.authenticate] }, async (req, reply) => {
     const data = await req.file()
     if (!data) return reply.status(400).send({ error: 'Arquivo CSV obrigatório' })
