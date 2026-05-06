@@ -1,0 +1,106 @@
+{
+  "name": "Scrape WhatsApp Invites -> Join via Disparo (Simplified)",
+  "nodes": [
+    { "parameters": {}, "id": "Start", "name": "Start", "type": "n8n-nodes-base.manualTrigger", "typeVersion": 1, "position": [200, 280] },
+    {
+      "parameters": {
+        "values": {
+          "string": [
+            { "name": "backend_url", "value": "http://178.238.236.103:3333" },
+            { "name": "api_key", "value": "REPLACE_WITH_YOUR_API_KEY" },
+            { "name": "start_time", "value": "" },
+            { "name": "end_time", "value": "" },
+            { "name": "max_per_session_day", "value": "10" }
+          ],
+          "json": [
+            { "name": "session_ids", "value": ["SESSION_ID_1"] },
+            { "name": "sources", "value": [
+              "https://exemplo.com/lista-de-grupos.html"
+            ] }
+          ]
+        }
+      },
+      "id": "Config",
+      "name": "Config",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 2,
+      "position": [440, 280]
+    },
+    {
+      "parameters": {
+        "functionCode": "const { sources = [], backend_url, api_key, session_ids, max_per_session_day, start_time, end_time } = $json;\nreturn sources.map((url) => ({ json: { url, backend_url, api_key, session_ids, max_per_session_day: parseInt(max_per_session_day||'0')||0, start_time: (start_time||'')||null, end_time: (end_time||'')||null } }));"
+      },
+      "id": "BuildPerSource",
+      "name": "Build Per Source",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 2,
+      "position": [700, 280]
+    },
+    {
+      "parameters": { "batchSize": 1 },
+      "id": "SplitInBatches",
+      "name": "Split In Batches",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 1,
+      "position": [940, 280]
+    },
+    {
+      "parameters": {
+        "url": "={{$json.url}}",
+        "responseFormat": "string"
+      },
+      "id": "FetchPage",
+      "name": "Fetch Page",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 1,
+      "position": [1180, 280]
+    },
+    {
+      "parameters": {
+        "functionCode": "// O HTTP Request com responseFormat:string retorna o corpo em $json.\nconst body = $json;\nconst text = typeof body === 'string' ? body : (body.body || '');\nconst regex = /https?:\\/\\/chat\\.whatsapp\\.com\\/[A-Za-z0-9_-]+/g;\nconst links = Array.from(new Set((text.match(regex) || [])));\n// Resgata o contexto da etapa anterior (Split In Batches)\nconst ctx = $item(0).$node['Split In Batches'].json;\nreturn [{ json: { links, backend_url: ctx.backend_url, api_key: ctx.api_key, session_ids: ctx.session_ids, max_per_session_day: ctx.max_per_session_day, start_time: ctx.start_time, end_time: ctx.end_time } }];"
+      },
+      "id": "ExtractLinks",
+      "name": "Extract Links",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [1420, 280]
+    },
+    {
+      "parameters": {
+        "functionCode": "const { backend_url, api_key, session_ids, links, max_per_session_day, start_time, end_time } = $json;\nreturn [{ json: { backend_url, api_key, body: { session_ids, invite_links: links, max_per_session_day, start_time, end_time, source: 'scraper' } } }];"
+      },
+      "id": "BuildBody",
+      "name": "Build Body",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [1660, 280]
+    },
+    {
+      "parameters": {
+        "url": "={{$json.backend_url}}/api/integrations/join-groups",
+        "method": "POST",
+        "jsonParameters": true,
+        "sendBinaryData": false,
+        "headerParametersJson": "={\"X-API-Key\": $json.api_key, \"Content-Type\": \"application/json\"}",
+        "bodyParametersJson": "={{$json.body}}"
+      },
+      "id": "JoinGroups",
+      "name": "POST /join-groups",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 1,
+      "position": [1900, 280]
+    }
+  ],
+  "connections": {
+    "Start": { "main": [ [ { "node": "Config", "type": "main", "index": 0 } ] ] },
+    "Config": { "main": [ [ { "node": "Build Per Source", "type": "main", "index": 0 } ] ] },
+    "Build Per Source": { "main": [ [ { "node": "Split In Batches", "type": "main", "index": 0 } ] ] },
+    "Split In Batches": { "main": [ [ { "node": "Fetch Page", "type": "main", "index": 0 } ], [ { "node": "Split In Batches", "type": "main", "index": 0 } ] ] },
+    "Fetch Page": { "main": [ [ { "node": "Extract Links", "type": "main", "index": 0 } ] ] },
+    "Extract Links": { "main": [ [ { "node": "Build Body", "type": "main", "index": 0 } ] ] },
+    "Build Body": { "main": [ [ { "node": "POST /join-groups", "type": "main", "index": 0 } ] ] }
+  },
+  "active": false,
+  "settings": {},
+  "staticData": {}
+}

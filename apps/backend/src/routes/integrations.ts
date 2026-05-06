@@ -287,6 +287,98 @@ export async function integrationsRoutes(app: FastifyInstance) {
     await baileysService.leaveGroup(session_id, group_id)
     return { message: 'ok' }
   })
+
+  // ===== Scraper interno (JWT) -> busca fontes, extrai links e enfileira joins =====
+  app.post('/integrations/scrape-and-join', { preHandler: [app.authenticate] }, async (req, reply) => {
+    const {
+      session_ids,
+      sources,
+      user_agent,
+      per_source_limit,
+      global_limit,
+      chunk_size,
+      max_per_session_day,
+      start_time,
+      end_time,
+      blacklist_domains,
+    } = (req.body || {}) as {
+      session_ids?: string[]
+      sources?: string[] | string
+      user_agent?: string
+      per_source_limit?: number
+      global_limit?: number
+      chunk_size?: number
+      max_per_session_day?: number
+      start_time?: string | null
+      end_time?: string | null
+      blacklist_domains?: string[]
+    }
+
+    const sessions = Array.isArray(session_ids) ? session_ids.filter(Boolean) : []
+    if (sessions.length === 0) return reply.status(400).send({ error: 'session_ids obrigatório (array)' })
+
+    const srcs: string[] = Array.isArray(sources)
+      ? sources.filter(Boolean)
+      : typeof sources === 'string'
+        ? sources.split(/\r?\n|,|;/).map((s) => s.trim()).filter(Boolean)
+        : []
+    if (srcs.length === 0) return reply.status(400).send({ error: 'sources vazio' })
+
+    const ua = user_agent && user_agent.trim().length > 0
+      ? user_agent
+      : 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123 Safari/537.36'
+    const perLimit = Math.max(0, Math.trunc(Number(per_source_limit) || 0))
+    const globLimit = Math.max(0, Math.trunc(Number(global_limit) || 0))
+    const csize = Math.max(1, Math.trunc(Number(chunk_size) || 50))
+    const bl = new Set((blacklist_domains || []).map((d) => String(d).toLowerCase()))
+
+    const WAREG = /https?:\/\/chat\.whatsapp\.com\/[A-Za-z0-9_-]+/g
+    const host = (u: string) => {
+      try { return new URL(u).hostname.toLowerCase() } catch { return '' }
+    }
+
+    let allLinks: string[] = []
+    const perSource: { url: string; found?: number; error?: string }[] = []
+
+    for (const url of srcs) {
+      try {
+        const res = await fetch(url, { headers: { 'User-Agent': ua } })
+        const text = await res.text()
+        let links = Array.from(new Set(text.match(WAREG) || []))
+        links = links.filter((l) => !bl.has(host(l)))
+        if (perLimit > 0 && links.length > perLimit) links = links.slice(0, perLimit)
+        allLinks.push(...links)
+        perSource.push({ url, found: links.length })
+      } catch (err) {
+        perSource.push({ url, error: String(err) })
+      }
+    }
+
+    // Dedup & limits
+    allLinks = Array.from(new Set(allLinks))
+    if (globLimit > 0 && allLinks.length > globLimit) allLinks = allLinks.slice(0, globLimit)
+
+    // Chunk e enfileira
+    const chunks: string[][] = []
+    for (let i = 0; i < allLinks.length; i += csize) {
+      chunks.push(allLinks.slice(i, i + csize))
+    }
+
+    let queued = 0
+    for (const batch of chunks) {
+      await groupJoinQueue.add({
+        sessionIds: sessions,
+        inviteCodes: batch,
+        maxPerSessionDay: Math.trunc(Number(max_per_session_day) || 0),
+        startTime: start_time || null,
+        endTime: end_time || null,
+        source: 'scraper',
+      })
+      queued += batch.length
+    }
+
+    return { total_found: allLinks.length, queued, sources: perSource, sessions: sessions.length, chunk_size: csize }
+  })
 }
 
 async function bulkInsert(

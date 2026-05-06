@@ -1,0 +1,68 @@
+{
+  "name": "Scrape WhatsApp Invites -> Join via Disparo (Full v2.18.5 Compatible)",
+  "nodes": [
+    {
+      "parameters": {},
+      "name": "Start",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [200, 240]
+    },
+    {
+      "parameters": {
+        "values": {
+          "string": [
+            { "name": "backend_url", "value": "http://178.238.236.103:3333" },
+            { "name": "api_key", "value": "REPLACE_WITH_YOUR_API_KEY" },
+            { "name": "user_agent", "value": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123 Safari/537.36" },
+            { "name": "start_time", "value": "" },
+            { "name": "end_time", "value": "" },
+            { "name": "max_per_session_day", "value": "10" },
+            { "name": "per_source_limit", "value": "100" },
+            { "name": "global_limit", "value": "500" },
+            { "name": "chunk_size", "value": "50" }
+          ],
+          "json": [
+            { "name": "session_ids", "value": ["SESSION_ID_1"] },
+            { "name": "sources", "value": [
+              "https://exemplo.com/lista-de-grupos.html"
+            ] },
+            { "name": "blacklist_domains", "value": [
+              "facebook.com", "instagram.com", "twitter.com", "x.com"
+            ] }
+          ]
+        }
+      },
+      "name": "Config",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 2,
+      "position": [460, 240]
+    },
+    {
+      "parameters": {
+        "functionCode": "// Lê config\nconst cfg = $json;\nconst backendUrl = cfg.backend_url;\nconst apiKey = cfg.api_key;\nconst sessionIds = cfg.session_ids || [];\nconst sources = Array.isArray(cfg.sources) ? cfg.sources : [];\nconst userAgent = cfg.user_agent || 'Mozilla/5.0';\nconst maxPerSessionDay = parseInt(cfg.max_per_session_day||'0')||0;\nconst startTime = (cfg.start_time||'')||null;\nconst endTime = (cfg.end_time||'')||null;\nconst perSourceLimit = Math.max(0, parseInt(cfg.per_source_limit||'0')||0);\nconst globalLimit = Math.max(0, parseInt(cfg.global_limit||'0')||0);\nconst chunkSize = Math.max(1, parseInt(cfg.chunk_size||'50')||50);\nconst blacklist = new Set((cfg.blacklist_domains||[]).map((x)=>String(x).toLowerCase()));\n\nfunction hostname(url){ try{ return new URL(url).hostname.toLowerCase(); }catch{ return ''; } }\nfunction extractLinks(text){ const re=/https?:\\/\\/chat\\.whatsapp\\.com\\/[A-Za-z0-9_-]+/g; return Array.from(new Set((text.match(re)||[]))); }\nasync function fetchText(url){ const res = await this.helpers.httpRequest({ method:'GET', url, json:false, headers: { 'User-Agent': userAgent } }); return typeof res==='string'?res:(res.body||''); }\n\nlet allLinks = []; const report = [];\nfor (const url of sources){\n  try {\n    const html = await fetchText.call(this, url);\n    let links = extractLinks(html);\n    // Filtro por blacklist\n    links = links.filter(l => !blacklist.has(hostname(l)));\n    if (perSourceLimit>0 && links.length>perSourceLimit) links = links.slice(0, perSourceLimit);\n    allLinks.push(...links);\n    report.push({ url, found: links.length });\n  } catch(e){\n    report.push({ url, error: (e&&e.message)?e.message:String(e) });\n  }\n}\n// Dedup global\nallLinks = Array.from(new Set(allLinks));\nif (globalLimit>0 && allLinks.length>globalLimit) allLinks = allLinks.slice(0, globalLimit);\n\nreturn [{ json: { backendUrl, apiKey, sessionIds, startTime, endTime, maxPerSessionDay, chunkSize, links: allLinks, report } }];"
+      },
+      "name": "ScrapeLinks",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [720, 240]
+    },
+    {
+      "parameters": {
+        "functionCode": "const { backendUrl, apiKey, sessionIds, startTime, endTime, maxPerSessionDay, chunkSize, links, report } = $json;\n\nfunction chunk(arr, size){ const out=[]; for(let i=0;i<arr.length;i+=size){ out.push(arr.slice(i,i+size)); } return out; }\n\nasync function postJoin(batch){ const body = { session_ids: sessionIds, invite_links: batch, max_per_session_day: maxPerSessionDay, start_time: startTime, end_time: endTime, source: 'scraper' }; return this.helpers.httpRequest({ method:'POST', url: `${backendUrl}/api/integrations/join-groups`, headers: { 'X-API-Key': apiKey, 'Content-Type':'application/json' }, body, json:true }); }\n\nlet queuedTotal = 0; const posts = []; const chunks = chunk(links||[], Math.max(1, chunkSize));\nfor (const c of chunks){\n  try{ const r = await postJoin.call(this, c); queuedTotal += (r&&r.queued)?r.queued:0; posts.push({ batchSize: c.length, queued: r.queued||0 }); }\n  catch(e){ posts.push({ batchSize: c.length, error: (e&&e.message)?e.message:String(e) }); }\n}\n\nreturn [{ json: { queuedTotal, batches: posts, scraped: (links||[]).length, report } }];"
+      },
+      "name": "BatchJoin",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [980, 240]
+    }
+  ],
+  "connections": {
+    "Start": { "main": [ [ { "node": "Config", "type": "main", "index": 0 } ] ] },
+    "Config": { "main": [ [ { "node": "ScrapeLinks", "type": "main", "index": 0 } ] ] },
+    "ScrapeLinks": { "main": [ [ { "node": "BatchJoin", "type": "main", "index": 0 } ] ] }
+  },
+  "active": false,
+  "settings": {},
+  "staticData": {}
+}
