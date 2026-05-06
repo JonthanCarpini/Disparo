@@ -117,6 +117,19 @@ async function generateWithRetry(provider: AIProvider, prompt: string, name: str
   throw lastErr
 }
 
+function buildFallbackMessage(prompt: string, name: string, phone: string): string {
+  const n = name || ''
+  // Substituições comuns de placeholders
+  let msg = prompt
+  msg = msg.replace(/\{\{?\s*(name|nome)\s*\}?\}/gi, n)
+  msg = msg.replace(/\{\s*(name|nome)\s*\}/gi, n)
+  // Se após substituições sobrar texto muito técnico (provável instrução), ainda assim enviar texto amigável
+  if (msg.length < 10) {
+    msg = n ? `Olá ${n}!` : 'Olá!'
+  }
+  return msg.trim()
+}
+
 async function processCampaign(campaignId: string) {
   const campaign = await queryOne<Campaign>(
     'SELECT * FROM campaigns WHERE id = ?',
@@ -269,13 +282,22 @@ async function processCampaign(campaignId: string) {
     })
 
     try {
-      const message = await generateWithRetry(
-        campaign.ai_provider,
-        campaign.prompt,
-        contact.name || '',
-        contact.phone,
-        campaign.ai_model || undefined,
-      )
+      let usedFallback = false
+      let message: string
+      try {
+        message = await generateWithRetry(
+          campaign.ai_provider,
+          campaign.prompt,
+          contact.name || '',
+          contact.phone,
+          campaign.ai_model || undefined,
+        )
+      } catch (aiErr) {
+        // Fallback: construir mensagem padrão a partir do prompt
+        usedFallback = true
+        message = buildFallbackMessage(campaign.prompt, contact.name || '', contact.phone)
+        logger.warn({ campaignId, phone: contact.phone, err: aiErr }, 'IA indisponível, usando mensagem fallback')
+      }
 
       const target = contact.jid || contact.phone
 
@@ -329,6 +351,7 @@ async function processCampaign(campaignId: string) {
         message,
         delay: Math.round(delayMs / 1000),
         status: 'sent',
+        fallback: usedFallback,
       })
 
       logger.info({ campaignId, phone: contact.phone, sessionId }, 'Mensagem enviada')
