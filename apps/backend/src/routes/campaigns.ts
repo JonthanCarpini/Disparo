@@ -113,7 +113,7 @@ export async function campaignsRoutes(app: FastifyInstance) {
           (id, name, list_id, ai_provider, ai_model, prompt, media_type, media_path,
            min_delay, max_delay, max_per_day, max_per_session_day, start_time, end_time,
            rotate_sessions, session_ids, scheduled_at, total, status)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'draft')`,
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'draft')`,
         [
           id, name, list_id, ai_provider, ai_model || null, prompt,
           media_type, mediaPath, parseInt(min_delay), parseInt(max_delay),
@@ -133,6 +133,9 @@ export async function campaignsRoutes(app: FastifyInstance) {
       }
       if (e?.code === 'ER_INVALID_JSON_TEXT' || e?.errno === 3140) {
         return reply.status(400).send({ error: 'session_ids inválido (JSON malformado)' })
+      }
+      if (e?.code === 'ER_WRONG_VALUE_COUNT_ON_ROW' || e?.errno === 1136) {
+        return reply.status(500).send({ error: 'Falha ao criar campanha (inconsistência de colunas). Atualize a página e tente novamente.' })
       }
       return reply.status(500).send({ error: 'Falha ao criar campanha' })
     }
