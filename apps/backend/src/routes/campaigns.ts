@@ -83,28 +83,59 @@ export async function campaignsRoutes(app: FastifyInstance) {
       return reply.status(400).send({ error: 'Campos obrigatórios: name, list_id, ai_provider, prompt, session_ids' })
     }
 
+    // Validação adicional para reduzir 500s silenciosos
+    const allowedProviders = ['openai', 'gemini', 'groq', 'mistral']
+    if (!allowedProviders.includes(ai_provider)) {
+      return reply.status(400).send({ error: `ai_provider inválido. Use: ${allowedProviders.join(', ')}` })
+    }
+
+    // Garantir que session_ids está em JSON válido para a coluna JSON
+    let sessionIdsStr = session_ids
+    try {
+      const arr = JSON.parse(session_ids)
+      if (!Array.isArray(arr) || arr.length === 0) {
+        return reply.status(400).send({ error: 'session_ids deve ser um array JSON com pelo menos 1 id' })
+      }
+      sessionIdsStr = JSON.stringify(arr)
+    } catch {
+      return reply.status(400).send({ error: 'session_ids inválido (JSON esperado)' })
+    }
+
     const id = uuidv4()
     const listInfo = await queryOne<{ total: number }>(
       'SELECT total FROM contact_lists WHERE id = ?',
       [list_id],
     )
 
-    await query(
-      `INSERT INTO campaigns
-        (id, name, list_id, ai_provider, ai_model, prompt, media_type, media_path,
-         min_delay, max_delay, max_per_day, max_per_session_day, start_time, end_time,
-         rotate_sessions, session_ids, scheduled_at, total, status)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'draft')`,
-      [
-        id, name, list_id, ai_provider, ai_model || null, prompt,
-        media_type, mediaPath, parseInt(min_delay), parseInt(max_delay),
-        parseInt(max_per_day) || 0,
-        parseInt(max_per_session_day) || 0,
-        start_time || null, end_time || null,
-        rotate_sessions === 'true' ? 1 : 0, session_ids,
-        scheduled_at || null, listInfo?.total || 0,
-      ],
-    )
+    try {
+      await query(
+        `INSERT INTO campaigns
+          (id, name, list_id, ai_provider, ai_model, prompt, media_type, media_path,
+           min_delay, max_delay, max_per_day, max_per_session_day, start_time, end_time,
+           rotate_sessions, session_ids, scheduled_at, total, status)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'draft')`,
+        [
+          id, name, list_id, ai_provider, ai_model || null, prompt,
+          media_type, mediaPath, parseInt(min_delay), parseInt(max_delay),
+          parseInt(max_per_day) || 0,
+          parseInt(max_per_session_day) || 0,
+          start_time || null, end_time || null,
+          rotate_sessions === 'true' ? 1 : 0, sessionIdsStr,
+          scheduled_at || null, listInfo?.total || 0,
+        ],
+      )
+    } catch (err) {
+      const e = err as unknown as { code?: string; errno?: number; sqlMessage?: string }
+      logger.error({ err: e, name, list_id, ai_provider, hasMedia: !!mediaPath }, 'Falha ao inserir campanha')
+      // Mapear erros comuns para 400
+      if (e?.code === 'ER_NO_REFERENCED_ROW_2' || e?.errno === 1452) {
+        return reply.status(400).send({ error: 'list_id inválido (lista não encontrada)' })
+      }
+      if (e?.code === 'ER_INVALID_JSON_TEXT' || e?.errno === 3140) {
+        return reply.status(400).send({ error: 'session_ids inválido (JSON malformado)' })
+      }
+      return reply.status(500).send({ error: 'Falha ao criar campanha' })
+    }
 
     if (!scheduled_at) {
       await startCampaign(id)

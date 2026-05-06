@@ -16,7 +16,10 @@
       "PowerShell($key = \"$env:USERPROFILE\\\\.ssh\\\\disparo_vps\"; C:\\\\Windows\\\\System32\\\\OpenSSH\\\\ssh.exe -i $key -o StrictHostKeyChecking=no root@178.238.236.103 'docker ps')",
       "PowerShell($key = \"$env:USERPROFILE\\\\.ssh\\\\disparo_vps\"; C:\\\\Windows\\\\System32\\\\OpenSSH\\\\ssh.exe -i $key -o StrictHostKeyChecking=no root@178.238.236.103 'docker logs tools_evolution --tail 50 2>&1')",
       "PowerShell($key = \"$env:USERPROFILE\\\\.ssh\\\\disparo_vps\"; C:\\\\Windows\\\\System32\\\\OpenSSH\\\\ssh.exe -i $key -o StrictHostKeyChecking=no root@178.238.236.103 'curl -s http://localhost:8080/instance/fetchInstances -H \"apikey: EvolutionKey@2026\" | head -c 500')",
-      "PowerShell(Get-Content \"$env:TEMP\\\\docker-compose-tools.yml\" | Select-String \"image|LOG_BAILEYS|CONFIG_SESSION\")"
+      "PowerShell(Get-Content \"$env:TEMP\\\\docker-compose-tools.yml\" | Select-String \"image|LOG_BAILEYS|CONFIG_SESSION\")",
+      "PowerShell($key = \"$env:USERPROFILE\\\\.ssh\\\\disparo_vps\"; C:\\\\Windows\\\\System32\\\\OpenSSH\\\\ssh.exe -i $key -o StrictHostKeyChecking=no root@178.238.236.103 'cd /opt/disparo && git pull && docker compose up -d --build backend')",
+      "PowerShell($key = \"$env:USERPROFILE\\\\.ssh\\\\disparo_vps\"; C:\\\\Windows\\\\System32\\\\OpenSSH\\\\ssh.exe -i $key -o StrictHostKeyChecking=no root@178.238.236.103 'cd /opt/disparo && git pull && docker compose up -d --build web')",
+      "Bash(git commit -m 'docs\\(claude\\): atualizar CLAUDE.md com seções 3.8/3.9 e novos endpoints *)"
     ],
     "additionalDirectories": [
       "c:\\Users\\admin\\Downloads"
