@@ -19,7 +19,7 @@ export async function contactsRoutes(app: FastifyInstance) {
     const list = await queryOne('SELECT * FROM contact_lists WHERE id = ?', [id])
     if (!list) return reply.status(404).send({ error: 'Lista não encontrada' })
     const contacts = await query(
-      'SELECT id, phone, name, extra_data FROM contacts WHERE list_id = ? ORDER BY created_at',
+      'SELECT id, phone, name, wa_exists FROM contacts WHERE list_id = ? ORDER BY name',
       [id],
     )
     return { list, contacts }

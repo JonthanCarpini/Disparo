@@ -78,6 +78,13 @@ export async function integrationsRoutes(app: FastifyInstance) {
     }
   })
 
+  app.get('/integrations/n8n-last-sync', { preHandler: [app.authenticate] }, async () => {
+    const row = await queryOne<{ value: string }>(
+      "SELECT value FROM settings WHERE `key` = 'n8n_last_sync_at'",
+    )
+    return { completed_at: row?.value || null }
+  })
+
   // ===== Gestão de API keys (auth JWT) =====
 
   app.get('/integrations/keys', { preHandler: [app.authenticate] }, async () => {
@@ -212,6 +219,16 @@ export async function integrationsRoutes(app: FastifyInstance) {
       skipped,
       created: !existing,
     }
+  })
+
+  app.post('/integrations/n8n-sync-complete', { preHandler: [apiKeyAuth] }, async (_req, _reply) => {
+    const value = new Date().toISOString()
+    await query(
+      "INSERT INTO settings (`key`, `value`) VALUES ('n8n_last_sync_at', ?) ON DUPLICATE KEY UPDATE `value` = ?",
+      [value, value],
+    )
+    logger.info('Workflow N8N concluído — sinal recebido')
+    return { message: 'ok' }
   })
 }
 

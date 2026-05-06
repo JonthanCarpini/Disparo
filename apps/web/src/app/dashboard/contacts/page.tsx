@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from 'react'
 import {
   Users, Upload, Download, Trash2, Plus, Loader2,
-  FileText, UsersRound, Contact, RefreshCw,
+  FileText, UsersRound, Contact, RefreshCw, Eye, Search, X,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { api } from '@/lib/api'
@@ -15,6 +15,13 @@ interface ContactList {
   total: number
   created_at: string
   campaigns_count: number
+}
+
+interface ContactRow {
+  id: string
+  phone: string
+  name: string
+  wa_exists: number | null
 }
 
 interface Session {
@@ -36,6 +43,11 @@ export default function ContactsPage() {
   const [selectedGroup, setSelectedGroup] = useState('')
   const [extracting, setExtracting] = useState(false)
   const [syncingN8n, setSyncingN8n] = useState(false)
+
+  const [viewingList, setViewingList] = useState<ContactList | null>(null)
+  const [viewContacts, setViewContacts] = useState<ContactRow[]>([])
+  const [viewLoading, setViewLoading] = useState(false)
+  const [viewSearch, setViewSearch] = useState('')
 
   useEffect(() => {
     loadLists()
@@ -90,6 +102,21 @@ export default function ContactsPage() {
     }
   }
 
+  const openContactsModal = async (list: ContactList) => {
+    setViewingList(list)
+    setViewContacts([])
+    setViewLoading(true)
+    setViewSearch('')
+    try {
+      const res = await api.get(`/contacts/lists/${list.id}`)
+      setViewContacts(res.data.contacts)
+    } catch {
+      toast.error('Erro ao carregar contatos')
+    } finally {
+      setViewLoading(false)
+    }
+  }
+
   const openGroupExtract = async () => {
     setExtractModal('group')
     setGroups([])
@@ -134,23 +161,34 @@ export default function ContactsPage() {
     setSyncingN8n(true)
     try {
       await api.post('/integrations/trigger-n8n-import')
-      toast.info('Workflow N8N iniciado! Aguardando importação...')
+      toast.info('Workflow N8N iniciado! Aguardando conclusão de todos os grupos...')
 
-      const snapshot = lists.reduce((acc, l) => acc + l.total, 0)
+      const triggerTime = Date.now()
       let attempts = 0
       const poll = setInterval(async () => {
         attempts++
-        const res = await api.get('/contacts/lists')
-        const newTotal = (res.data as ContactList[]).reduce((acc: number, l: ContactList) => acc + l.total, 0)
-        setLists(res.data)
-        if (newTotal > snapshot || attempts >= 20) {
-          clearInterval(poll)
-          if (newTotal > snapshot) {
-            toast.success(`Sincronização concluída! ${newTotal - snapshot} contatos novos importados.`)
-          } else {
-            toast.info('Sincronização finalizada.')
+        try {
+          const [syncRes, listsRes] = await Promise.all([
+            api.get('/integrations/n8n-last-sync'),
+            api.get('/contacts/lists'),
+          ])
+          setLists(listsRes.data)
+
+          const completedAt = syncRes.data.completed_at
+            ? new Date(syncRes.data.completed_at).getTime()
+            : null
+
+          if (completedAt && completedAt > triggerTime) {
+            clearInterval(poll)
+            const total = (listsRes.data as ContactList[]).reduce(
+              (acc: number, l: ContactList) => acc + l.total, 0,
+            )
+            toast.success(`Sincronização concluída! ${total.toLocaleString()} contatos no total.`)
+          } else if (attempts >= 36) {
+            clearInterval(poll)
+            toast.info('Tempo limite atingido. Atualize a página para ver novos contatos.')
           }
-        }
+        } catch {}
       }, 5000)
     } catch (err: unknown) {
       const msg = (err as { response?: { data?: { error?: string } } })?.response?.data?.error
@@ -175,6 +213,12 @@ export default function ContactsPage() {
   }
 
   const connectedSessions = sessions.filter((s) => s.status === 'connected')
+
+  const filteredContacts = viewContacts.filter((c) => {
+    if (!viewSearch) return true
+    const q = viewSearch.toLowerCase()
+    return c.phone.includes(q) || (c.name || '').toLowerCase().includes(q)
+  })
 
   return (
     <div className="p-8">
@@ -246,14 +290,20 @@ export default function ContactsPage() {
             </div>
             <div className="flex gap-2 pt-4 border-t border-border">
               <button
+                onClick={() => openContactsModal(l)}
+                className="flex-1 flex items-center justify-center gap-1.5 py-2 text-sm text-muted-foreground hover:text-foreground hover:bg-muted rounded-xl transition-colors"
+              >
+                <Eye className="w-3.5 h-3.5" /> Ver
+              </button>
+              <button
                 onClick={() => handleExportCSV(l.id, l.name)}
-                className="flex-1 flex items-center justify-center gap-2 py-2 text-sm text-muted-foreground hover:text-foreground hover:bg-muted rounded-xl transition-colors"
+                className="flex-1 flex items-center justify-center gap-1.5 py-2 text-sm text-muted-foreground hover:text-foreground hover:bg-muted rounded-xl transition-colors"
               >
                 <Download className="w-3.5 h-3.5" /> Exportar
               </button>
               <button
                 onClick={() => handleDeleteList(l.id)}
-                className="flex-1 flex items-center justify-center gap-2 py-2 text-sm text-destructive hover:bg-destructive/10 rounded-xl transition-colors"
+                className="flex-1 flex items-center justify-center gap-1.5 py-2 text-sm text-destructive hover:bg-destructive/10 rounded-xl transition-colors"
               >
                 <Trash2 className="w-3.5 h-3.5" /> Remover
               </button>
@@ -268,6 +318,98 @@ export default function ContactsPage() {
         )}
       </div>
 
+      {/* Modal: visualizar contatos */}
+      {viewingList && (
+        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
+          <div className="bg-card border border-border rounded-2xl w-full max-w-lg flex flex-col max-h-[80vh]">
+            <div className="flex items-center justify-between p-5 border-b border-border shrink-0">
+              <div className="min-w-0">
+                <h3 className="font-semibold text-foreground truncate" title={viewingList.name}>
+                  {viewingList.name}
+                </h3>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  {viewingList.total.toLocaleString()} contatos
+                </p>
+              </div>
+              <button
+                onClick={() => setViewingList(null)}
+                className="p-1.5 hover:bg-muted rounded-lg shrink-0 ml-3"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="p-4 border-b border-border shrink-0">
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
+                <input
+                  value={viewSearch}
+                  onChange={(e) => setViewSearch(e.target.value)}
+                  placeholder="Buscar por nome ou telefone..."
+                  className="w-full pl-8 pr-3 py-2 bg-muted border border-border rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+                />
+              </div>
+              {viewSearch && (
+                <p className="text-xs text-muted-foreground mt-2">
+                  {filteredContacts.length} de {viewContacts.length} contatos
+                </p>
+              )}
+            </div>
+
+            <div className="overflow-y-auto flex-1">
+              {viewLoading ? (
+                <div className="flex items-center justify-center py-12">
+                  <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" />
+                </div>
+              ) : filteredContacts.length === 0 ? (
+                <div className="text-center py-10 text-muted-foreground text-sm">
+                  {viewSearch ? 'Nenhum contato encontrado.' : 'Lista vazia.'}
+                </div>
+              ) : (
+                <div className="divide-y divide-border">
+                  {filteredContacts.map((c) => (
+                    <div key={c.id} className="flex items-center gap-3 px-5 py-3 hover:bg-muted/30">
+                      <div className={`w-1.5 h-1.5 rounded-full shrink-0 ${
+                        c.wa_exists === 1 ? 'bg-green-500' :
+                        c.wa_exists === 0 ? 'bg-red-500' :
+                        'bg-muted-foreground/40'
+                      }`} />
+                      <div className="min-w-0 flex-1">
+                        <p className="text-sm font-medium text-foreground">{c.phone}</p>
+                        {c.name && (
+                          <p className="text-xs text-muted-foreground truncate">{c.name}</p>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <div className="p-4 border-t border-border shrink-0 flex items-center justify-between">
+              <p className="text-xs text-muted-foreground flex gap-3">
+                <span className="flex items-center gap-1">
+                  <span className="w-1.5 h-1.5 rounded-full bg-green-500 inline-block" /> Verificado
+                </span>
+                <span className="flex items-center gap-1">
+                  <span className="w-1.5 h-1.5 rounded-full bg-red-500 inline-block" /> Inválido
+                </span>
+                <span className="flex items-center gap-1">
+                  <span className="w-1.5 h-1.5 rounded-full bg-muted-foreground/40 inline-block" /> Não verificado
+                </span>
+              </p>
+              <button
+                onClick={() => setViewingList(null)}
+                className="px-4 py-2 bg-muted rounded-xl text-sm hover:bg-muted/80 transition-colors"
+              >
+                Fechar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal: extrair grupo / contatos WA */}
       {extractModal && (
         <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
           <div className="bg-card border border-border rounded-2xl p-6 w-full max-w-md">
