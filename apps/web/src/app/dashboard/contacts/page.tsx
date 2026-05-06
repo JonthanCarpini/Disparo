@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from 'react'
 import {
   Users, Upload, Download, Trash2, Plus, Loader2,
-  FileText, UsersRound, Contact,
+  FileText, UsersRound, Contact, RefreshCw,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { api } from '@/lib/api'
@@ -34,6 +34,7 @@ export default function ContactsPage() {
   const [groups, setGroups] = useState<{ id: string; name: string; size: number }[]>([])
   const [selectedGroup, setSelectedGroup] = useState('')
   const [extracting, setExtracting] = useState(false)
+  const [syncingN8n, setSyncingN8n] = useState(false)
 
   useEffect(() => {
     loadLists()
@@ -128,16 +129,32 @@ export default function ContactsPage() {
     }
   }
 
+  const handleSyncN8n = async () => {
+    setSyncingN8n(true)
+    try {
+      await api.post('/integrations/trigger-n8n-import')
+      toast.success('Workflow N8N iniciado! Os grupos serão importados em instantes.')
+      setTimeout(loadLists, 8000)
+    } catch (err: unknown) {
+      const msg = (err as { response?: { data?: { error?: string } } })?.response?.data?.error
+      toast.error(msg || 'Erro ao acionar workflow N8N')
+    } finally {
+      setSyncingN8n(false)
+    }
+  }
+
   const sourceIcon: Record<string, React.ReactNode> = {
     csv_import: <FileText className="w-4 h-4 text-blue-400" />,
     group_extract: <UsersRound className="w-4 h-4 text-violet-400" />,
     contact_extract: <Contact className="w-4 h-4 text-yellow-400" />,
+    n8n_group_import: <RefreshCw className="w-4 h-4 text-violet-400" />,
   }
 
   const sourceLabel: Record<string, string> = {
     csv_import: 'CSV Importado',
     group_extract: 'Grupo WA',
     contact_extract: 'Contatos WA',
+    n8n_group_import: 'N8N / Evolution',
   }
 
   const connectedSessions = sessions.filter((s) => s.status === 'connected')
@@ -172,6 +189,14 @@ export default function ContactsPage() {
           className="flex items-center gap-2 px-4 py-2.5 bg-card border border-border rounded-xl text-sm font-medium text-foreground hover:bg-muted disabled:opacity-50 transition-colors"
         >
           <Contact className="w-4 h-4 text-yellow-400" /> Extrair Contatos WA
+        </button>
+        <button
+          onClick={handleSyncN8n}
+          disabled={syncingN8n}
+          className="flex items-center gap-2 px-4 py-2.5 bg-card border border-violet-500/30 rounded-xl text-sm font-medium text-violet-400 hover:bg-violet-500/10 disabled:opacity-50 transition-colors"
+        >
+          {syncingN8n ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
+          Sincronizar via N8N
         </button>
       </div>
 

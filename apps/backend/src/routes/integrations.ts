@@ -38,6 +38,46 @@ function normalizeParticipant(p: ImportParticipant): { phone: string; jid: strin
 }
 
 export async function integrationsRoutes(app: FastifyInstance) {
+  // ===== Configuração do webhook N8N =====
+
+  app.get('/integrations/n8n-webhook', { preHandler: [app.authenticate] }, async () => {
+    const row = await queryOne<{ value: string }>(
+      "SELECT value FROM settings WHERE `key` = 'n8n_webhook_url'",
+    )
+    return { url: row?.value || '' }
+  })
+
+  app.put('/integrations/n8n-webhook', { preHandler: [app.authenticate] }, async (req, reply) => {
+    const { url } = req.body as { url?: string }
+    if (url === undefined) return reply.status(400).send({ error: 'Campo url obrigatório' })
+    await query(
+      "INSERT INTO settings (`key`, `value`) VALUES ('n8n_webhook_url', ?) ON DUPLICATE KEY UPDATE `value` = ?",
+      [url, url],
+    )
+    return { message: 'URL salva' }
+  })
+
+  app.post('/integrations/trigger-n8n-import', { preHandler: [app.authenticate] }, async (_req, reply) => {
+    const row = await queryOne<{ value: string }>(
+      "SELECT value FROM settings WHERE `key` = 'n8n_webhook_url'",
+    )
+    if (!row?.value) {
+      return reply.status(400).send({ error: 'URL do webhook N8N não configurada. Configure em Integrações.' })
+    }
+    try {
+      const res = await fetch(row.value, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' })
+      if (!res.ok) {
+        const text = await res.text()
+        return reply.status(502).send({ error: `N8N respondeu com erro ${res.status}: ${text}` })
+      }
+      logger.info('Workflow N8N disparado via botão')
+      return { message: 'Workflow N8N iniciado com sucesso' }
+    } catch (err) {
+      logger.error({ err }, 'Erro ao chamar webhook N8N')
+      return reply.status(502).send({ error: 'Não foi possível conectar ao N8N. Verifique a URL configurada.' })
+    }
+  })
+
   // ===== Gestão de API keys (auth JWT) =====
 
   app.get('/integrations/keys', { preHandler: [app.authenticate] }, async () => {

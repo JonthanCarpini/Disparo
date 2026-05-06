@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { Plug, Plus, Trash2, Copy, Check, Power, Loader2, Key, AlertCircle } from 'lucide-react'
+import { Plug, Plus, Trash2, Copy, Check, Power, Loader2, Key, AlertCircle, Workflow, Save } from 'lucide-react'
 import { toast } from 'sonner'
 import { api } from '@/lib/api'
 
@@ -22,16 +22,34 @@ export default function IntegrationsPage() {
   const [creating, setCreating] = useState(false)
   const [createdKey, setCreatedKey] = useState<{ label: string; key: string } | null>(null)
   const [copied, setCopied] = useState(false)
+  const [webhookUrl, setWebhookUrl] = useState('')
+  const [savingWebhook, setSavingWebhook] = useState(false)
 
   const load = async () => {
     setLoading(true)
     try {
-      const { data } = await api.get('/integrations/keys')
-      setKeys(data)
+      const [keysRes, webhookRes] = await Promise.all([
+        api.get('/integrations/keys'),
+        api.get('/integrations/n8n-webhook'),
+      ])
+      setKeys(keysRes.data)
+      setWebhookUrl(webhookRes.data.url || '')
     } catch {
-      toast.error('Erro ao carregar API keys')
+      toast.error('Erro ao carregar configurações')
     } finally {
       setLoading(false)
+    }
+  }
+
+  const saveWebhookUrl = async () => {
+    setSavingWebhook(true)
+    try {
+      await api.put('/integrations/n8n-webhook', { url: webhookUrl })
+      toast.success('URL do webhook salva')
+    } catch {
+      toast.error('Erro ao salvar URL')
+    } finally {
+      setSavingWebhook(false)
     }
   }
 
@@ -98,7 +116,7 @@ export default function IntegrationsPage() {
           Envie grupos do WhatsApp diretamente para o Disparo. Cada chamada cria/atualiza uma lista de contatos identificada por <code className="px-1.5 py-0.5 bg-muted rounded text-xs">groupJid</code>.
         </p>
         <div className="bg-muted rounded-xl p-4 font-mono text-xs overflow-x-auto">
-          <div className="text-primary font-semibold mb-2">POST http://178.238.236.103:3001/api/integrations/import-group</div>
+          <div className="text-primary font-semibold mb-2">POST http://178.238.236.103:3333/api/integrations/import-group</div>
           <div className="text-muted-foreground mb-1">Headers:</div>
           <div className="ml-2 mb-2">
             <div>Content-Type: application/json</div>
@@ -113,6 +131,34 @@ export default function IntegrationsPage() {
     { "jid": "12345678901@lid" }
   ]
 }`}</pre>
+        </div>
+      </div>
+
+      {/* Configuração webhook N8N */}
+      <div className="bg-card border border-border rounded-2xl p-6 mb-6">
+        <div className="flex items-center gap-2 mb-3">
+          <Workflow className="w-5 h-5 text-violet-400" />
+          <h3 className="font-semibold">Webhook do Workflow N8N</h3>
+        </div>
+        <p className="text-sm text-muted-foreground mb-4">
+          Cole aqui a URL do webhook do workflow de importação de grupos. Após importar o workflow no N8N, ative-o e copie a URL de produção do nó <code className="px-1.5 py-0.5 bg-muted rounded text-xs">Webhook Iniciar</code>.
+        </p>
+        <div className="flex gap-2">
+          <input
+            type="url"
+            value={webhookUrl}
+            onChange={(e) => setWebhookUrl(e.target.value)}
+            placeholder="http://178.238.236.103:5678/webhook/disparo-import-grupos"
+            className="flex-1 px-3 py-2.5 bg-muted border border-border rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary font-mono"
+          />
+          <button
+            onClick={saveWebhookUrl}
+            disabled={savingWebhook}
+            className="flex items-center gap-2 px-4 py-2.5 bg-violet-500/20 text-violet-400 hover:bg-violet-500/30 rounded-xl text-sm font-medium transition-colors disabled:opacity-50"
+          >
+            {savingWebhook ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+            Salvar
+          </button>
         </div>
       </div>
 
