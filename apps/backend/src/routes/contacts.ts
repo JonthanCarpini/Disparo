@@ -8,7 +8,9 @@ import { baileysService } from '../services/BaileysService'
 export async function contactsRoutes(app: FastifyInstance) {
   app.get('/contacts/lists', { preHandler: [app.authenticate] }, async () => {
     return query(
-      'SELECT id, name, source, total, created_at FROM contact_lists ORDER BY created_at DESC',
+      `SELECT cl.id, cl.name, cl.source, cl.total, cl.created_at,
+        (SELECT COUNT(*) FROM campaigns WHERE list_id = cl.id) AS campaigns_count
+       FROM contact_lists cl ORDER BY cl.created_at DESC`,
     )
   })
 

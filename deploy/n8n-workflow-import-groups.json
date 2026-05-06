@@ -88,7 +88,7 @@
     {
       "parameters": {
         "method": "POST",
-        "url": "http://178.238.236.103:3001/api/integrations/import-group",
+        "url": "http://178.238.236.103:3333/api/integrations/import-group",
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [

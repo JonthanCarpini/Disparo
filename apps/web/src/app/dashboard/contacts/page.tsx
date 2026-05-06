@@ -14,6 +14,7 @@ interface ContactList {
   source: string
   total: number
   created_at: string
+  campaigns_count: number
 }
 
 interface Session {
@@ -133,8 +134,24 @@ export default function ContactsPage() {
     setSyncingN8n(true)
     try {
       await api.post('/integrations/trigger-n8n-import')
-      toast.success('Workflow N8N iniciado! Os grupos serão importados em instantes.')
-      setTimeout(loadLists, 8000)
+      toast.info('Workflow N8N iniciado! Aguardando importação...')
+
+      const snapshot = lists.reduce((acc, l) => acc + l.total, 0)
+      let attempts = 0
+      const poll = setInterval(async () => {
+        attempts++
+        const res = await api.get('/contacts/lists')
+        const newTotal = (res.data as ContactList[]).reduce((acc: number, l: ContactList) => acc + l.total, 0)
+        setLists(res.data)
+        if (newTotal > snapshot || attempts >= 20) {
+          clearInterval(poll)
+          if (newTotal > snapshot) {
+            toast.success(`Sincronização concluída! ${newTotal - snapshot} contatos novos importados.`)
+          } else {
+            toast.info('Sincronização finalizada.')
+          }
+        }
+      }, 5000)
     } catch (err: unknown) {
       const msg = (err as { response?: { data?: { error?: string } } })?.response?.data?.error
       toast.error(msg || 'Erro ao acionar workflow N8N')
@@ -203,19 +220,30 @@ export default function ContactsPage() {
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
         {lists.map((l) => (
           <div key={l.id} className="bg-card border border-border rounded-2xl p-5">
-            <div className="flex items-start justify-between mb-3">
-              <div className="flex items-center gap-2">
-                {sourceIcon[l.source]}
-                <div>
-                  <p className="font-medium text-foreground">{l.name}</p>
-                  <p className="text-xs text-muted-foreground">{sourceLabel[l.source]}</p>
+            <div className="flex items-start justify-between gap-3 mb-3">
+              <div className="flex items-start gap-2 min-w-0">
+                <div className="mt-0.5 shrink-0">{sourceIcon[l.source]}</div>
+                <div className="min-w-0">
+                  <p className="font-medium text-foreground truncate" title={l.name}>{l.name}</p>
+                  <p className="text-xs text-muted-foreground">{sourceLabel[l.source] ?? l.source}</p>
                 </div>
               </div>
-              <span className="text-2xl font-bold text-primary">{l.total.toLocaleString()}</span>
+              <span className="text-2xl font-bold text-primary shrink-0">{l.total.toLocaleString()}</span>
             </div>
-            <p className="text-xs text-muted-foreground mb-4">
-              {new Date(l.created_at).toLocaleDateString('pt-BR', { day: '2-digit', month: 'short', year: 'numeric' })}
-            </p>
+            <div className="flex items-center justify-between mb-4">
+              <p className="text-xs text-muted-foreground">
+                {new Date(l.created_at).toLocaleDateString('pt-BR', { day: '2-digit', month: 'short', year: 'numeric' })}
+              </p>
+              {l.campaigns_count > 0 ? (
+                <span className="text-xs px-2 py-0.5 rounded-full bg-primary/15 text-primary">
+                  {l.campaigns_count} {l.campaigns_count === 1 ? 'campanha' : 'campanhas'}
+                </span>
+              ) : (
+                <span className="text-xs px-2 py-0.5 rounded-full bg-muted text-muted-foreground">
+                  Sem campanhas
+                </span>
+              )}
+            </div>
             <div className="flex gap-2 pt-4 border-t border-border">
               <button
                 onClick={() => handleExportCSV(l.id, l.name)}
