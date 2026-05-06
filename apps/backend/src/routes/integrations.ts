@@ -3,6 +3,8 @@ import { v4 as uuidv4 } from 'uuid'
 import { query, queryOne } from '../lib/db'
 import { generateApiKey, apiKeyAuth } from '../lib/apiKeyAuth'
 import { logger } from '../lib/logger'
+import { groupJoinQueue } from '../workers/GroupJoinWorker'
+import { baileysService } from '../services/BaileysService'
 
 interface ImportParticipant {
   phone?: string
@@ -228,6 +230,61 @@ export async function integrationsRoutes(app: FastifyInstance) {
       [value, value],
     )
     logger.info('Workflow N8N concluído — sinal recebido')
+    return { message: 'ok' }
+  })
+
+  // ===== Join automático em grupos via link (auth via X-API-Key) =====
+  app.post('/integrations/join-groups', { preHandler: [apiKeyAuth] }, async (req, reply) => {
+    const { session_ids, invite_links, max_per_session_day, start_time, end_time, source } = (req.body || {}) as {
+      session_ids?: string[]
+      invite_links?: string[] | string
+      max_per_session_day?: number
+      start_time?: string | null
+      end_time?: string | null
+      source?: string
+    }
+
+    const sessions = Array.isArray(session_ids) ? session_ids.filter(Boolean) : []
+    if (sessions.length === 0) return reply.status(400).send({ error: 'session_ids obrigatório (array)' })
+
+    let links: string[] = []
+    if (Array.isArray(invite_links)) links = invite_links
+    else if (typeof invite_links === 'string') links = invite_links.split(/\s|,|;|\n/).filter(Boolean)
+    if (links.length === 0) return reply.status(400).send({ error: 'invite_links vazio' })
+
+    await groupJoinQueue.add({
+      sessionIds: sessions,
+      inviteCodes: links,
+      maxPerSessionDay: typeof max_per_session_day === 'number' ? max_per_session_day : 0,
+      startTime: start_time || null,
+      endTime: end_time || null,
+      source: source || 'scraper',
+    })
+
+    return { queued: links.length, sessions: sessions.length }
+  })
+
+  // Auditoria: listar joins
+  app.get('/integrations/group-joins', { preHandler: [app.authenticate] }, async (req) => {
+    const { status, session_id, page = '1', limit = '50' } = req.query as { status?: string; session_id?: string; page?: string; limit?: string }
+    const limitVal = Math.max(1, parseInt(limit) || 50)
+    const offset = (Math.max(1, parseInt(page) || 1) - 1) * limitVal
+    const where: string[] = []
+    const values: unknown[] = []
+    if (status) { where.push('status = ?'); values.push(status) }
+    if (session_id) { where.push('session_id = ?'); values.push(session_id) }
+    const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : ''
+    return query(
+      `SELECT * FROM group_joins ${whereSql} ORDER BY created_at DESC LIMIT ${limitVal} OFFSET ${offset}`,
+      values,
+    )
+  })
+
+  // Sair de um grupo manualmente
+  app.post('/integrations/leave-group', { preHandler: [apiKeyAuth] }, async (req, reply) => {
+    const { session_id, group_id } = req.body as { session_id?: string; group_id?: string }
+    if (!session_id || !group_id) return reply.status(400).send({ error: 'session_id e group_id são obrigatórios' })
+    await baileysService.leaveGroup(session_id, group_id)
     return { message: 'ok' }
   })
 }

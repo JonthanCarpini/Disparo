@@ -11,6 +11,21 @@ CREATE TABLE IF NOT EXISTS users (
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
 );
 
+CREATE TABLE IF NOT EXISTS group_joins (
+  id VARCHAR(36) PRIMARY KEY,
+  source VARCHAR(100) DEFAULT 'scraper',
+  invite_link VARCHAR(500) NOT NULL,
+  invite_code VARCHAR(120) NOT NULL,
+  session_id VARCHAR(36) NOT NULL,
+  status ENUM('pending','joined','failed','skipped') DEFAULT 'pending',
+  group_id VARCHAR(120),
+  group_name VARCHAR(200),
+  error TEXT,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE KEY uniq_invite_per_session (invite_code, session_id),
+  INDEX idx_session_status (session_id, status)
+);
+
 CREATE TABLE IF NOT EXISTS whatsapp_sessions (
   id VARCHAR(36) PRIMARY KEY,
   name VARCHAR(100) NOT NULL,

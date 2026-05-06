@@ -412,6 +412,28 @@ class BaileysService {
     return result
   }
 
+  async joinGroupByInvite(sessionId: string, inviteCode: string): Promise<{ groupId: string; subject?: string }> {
+    const sock = this.sockets.get(sessionId)
+    if (!sock) throw new Error(`Sessão ${sessionId} não conectada`)
+    // Baileys: groupAcceptInvite(inviteCode)
+    // Retorna geralmente { gid } ou metadata após entrar
+    const res: any = await (sock as any).groupAcceptInvite(inviteCode)
+    // Alguns retornos trazem { gid }, outros um jid direto
+    const groupId: string = typeof res === 'string' ? res : (res?.gid || res?.groupId || res?.id)
+    try {
+      const meta = await sock.groupMetadata(groupId)
+      return { groupId, subject: meta?.subject }
+    } catch {
+      return { groupId }
+    }
+  }
+
+  async leaveGroup(sessionId: string, groupId: string): Promise<void> {
+    const sock = this.sockets.get(sessionId)
+    if (!sock) throw new Error(`Sessão ${sessionId} não conectada`)
+    await (sock as any).groupLeave(groupId)
+  }
+
   async sendText(sessionId: string, phone: string, message: string): Promise<void> {
     const sock = this.sockets.get(sessionId)
     if (!sock) throw new Error(`Sessão ${sessionId} não conectada`)
