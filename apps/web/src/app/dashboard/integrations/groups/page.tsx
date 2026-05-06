@@ -1,7 +1,7 @@
 "use client"
 import React, { useEffect, useMemo, useState } from 'react'
 import { api } from '@/lib/api'
-import { toast } from 'react-hot-toast'
+import { toast } from 'sonner'
 
 interface Session { id: string; name: string; phone: string | null; status: string; warming_daily_limit?: number }
 
