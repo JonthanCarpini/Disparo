@@ -62,8 +62,7 @@
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
-            { "name": "X-API-Key", "value": "COLE_SUA_API_KEY_AQUI" },
-            { "name": "Content-Type", "value": "application/json" }
+            { "name": "X-API-Key", "value": "COLE_SUA_API_KEY_AQUI" }
           ]
         },
         "sendBody": false,

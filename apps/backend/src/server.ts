@@ -46,6 +46,11 @@ async function bootstrap() {
 
   await app.register(websocket)
 
+  app.addContentTypeParser('application/json', { parseAs: 'string' }, (_req, body, done) => {
+    if (!body) return done(null, {})
+    try { done(null, JSON.parse(body as string)) } catch (err) { done(err as Error, undefined) }
+  })
+
   app.decorate('authenticate', async (req: FastifyRequest, reply: FastifyReply) => {
     try {
       await req.jwtVerify()
