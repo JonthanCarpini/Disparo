@@ -189,13 +189,42 @@ Como a extração de grupos via Baileys ainda é limitada por LID/sync, foi inst
 
 **Workflow n8n** (`deploy/n8n-workflow-import-groups.json`):
 - Buscar todos os grupos → `splitInBatches` → detalhes do grupo → montar payload → POST para Disparo → wait 3s → loop
-- Substituiu o fluxo antigo de "agregar + gerar CSV" por chamada HTTP direta
+- Output **done** do `splitInBatches` conectado ao node "Notificar Conclusão" → `POST /integrations/n8n-sync-complete`
+- **Importante**: node "Notificar Conclusão" usa apenas header `X-API-Key` (sem `Content-Type: application/json`) — body vazio com Content-Type JSON causa `FST_ERR_CTP_EMPTY_JSON_BODY`
+- `normalizeParticipant` verifica `p.phone` antes de `p.jid` para evitar LIDs (15 dígitos) serem armazenados como telefone real
 
 **Frontend** — `app/dashboard/integrations/page.tsx`:
 - Lista de chaves com status, last_used_at, toggle enable/disable, delete
-- Modal de criação com label
-- Modal de exibição da chave gerada (com botão copiar e aviso "só mostrada uma vez")
+- Modal de criação com label; modal exibe chave gerada uma única vez (com botão copiar)
 - Documentação inline do endpoint para copy-paste no n8n
+- Campo para salvar URL do webhook N8N (`settings.n8n_webhook_url`)
+
+### 3.9. Melhorias na página de Contatos (Mai/2026)
+
+**Modal de visualização de contatos** (`app/dashboard/contacts/page.tsx`):
+- Botão "Ver" em cada card abre modal com lista completa de contatos e busca por nome/telefone
+- Estatísticas ao vivo: válidos (verde) / inválidos (vermelho) / não verificados (cinza)
+- Seletor de sessão + botão **Verificar números** — verifica apenas `wa_exists IS NULL` (não reverifica)
+- Botão **Remover N inválidos** — visível quando `wa_exists = 0 > 0`; chama `DELETE /contacts/lists/:id/invalid`; recalcula `contact_lists.total`
+
+**Cards de lista melhorados**:
+- Nome truncado (`truncate`/`min-w-0`/`shrink-0`) — não empurra o contador de contatos
+- Badge de campanhas: "X campanhas" (verde) ou "Sem campanhas" (cinza)
+- Fonte `n8n_group_import` mapeada para "N8N / Evolution" com ícone RefreshCw
+
+**Polling de sincronização N8N** (botão "Sincronizar via N8N"):
+- Trigger: `POST /integrations/trigger-n8n-import` aciona webhook salvo em settings
+- Polling a cada 5s por até 10 minutos (120 tentativas)
+- Detecção de conclusão via `GET /integrations/n8n-last-sync`: só exibe toast quando `completed_at > triggerTime`
+- N8N grava o sinal via `POST /integrations/n8n-sync-complete` (X-API-Key) ao final do loop
+- Lista atualiza em tempo real durante polling (`setLists` a cada poll)
+
+**Fix: logout ao recarregar página** (`app/dashboard/layout.tsx`):
+- Causa: zustand `persist` reidrata localStorage assincronamente; `isAuthenticated` era `false` no SSR → redirect para `/login`
+- Fix: estado `mounted` — exibe spinner de loading até o componente montar, só então verifica auth
+
+**Fix: body vazio com Content-Type JSON** (`apps/backend/src/server.ts`):
+- `app.addContentTypeParser('application/json', ...)` customizado: body vazio retorna `{}` em vez de lançar `FST_ERR_CTP_EMPTY_JSON_BODY`
 
 ---
 
@@ -263,6 +292,20 @@ Dispatcher em `generateMessage()` por `if/else`. Próxima refatoração: extrair
 
 - `GET/POST/PUT/DELETE /integrations/keys` (JWT) — gestão de chaves
 - `POST /integrations/import-group` (X-API-Key) — upsert lista por `source_jid`, dedupe contatos por `jid`, batch insert de 500
+- `GET /integrations/n8n-webhook` / `PUT /integrations/n8n-webhook` (JWT) — lê/salva URL do webhook N8N em `settings`
+- `POST /integrations/trigger-n8n-import` (JWT) — aciona o webhook N8N salvo
+- `GET /integrations/n8n-last-sync` (JWT) — retorna `{ completed_at }` do último sync completo
+- `POST /integrations/n8n-sync-complete` (X-API-Key) — N8N chama ao fim do loop; grava timestamp em `settings.n8n_last_sync_at`
+
+### `apps/backend/src/routes/contacts.ts`
+
+- `POST /contacts/extract-group` — extrai grupo via Baileys, salva em `contacts` com `jid`
+- `POST /contacts/extract-contacts` — extrai agenda completa
+- `GET /contacts/lists/:id/export` — CSV com BOM + `;`
+- `GET /contacts/lists/:id` — retorna lista + contatos (`phone, name, wa_exists`; **não** inclui `extra_data`)
+- `POST /contacts/lists/:id/verify-numbers` — valida via `onWhatsApp`, marca `wa_exists`
+- `DELETE /contacts/lists/:id/invalid` — remove contatos com `wa_exists = 0` e recalcula `total`
+- **`bulkInsertContacts()`** — batch INSERT de 500 em 500
 
 ---
 
@@ -325,6 +368,12 @@ api_keys (
   last_used_at TIMESTAMP NULL,
   created_at TIMESTAMP
 )
+
+settings (
+  `key` VARCHAR(100) PK,
+  `value` TEXT
+  -- chaves usadas: 'n8n_webhook_url', 'n8n_last_sync_at'
+)
 ```
 
 **Sempre prefira `jid` para envio**. `phone` é apenas para exibição/CSV.
@@ -353,7 +402,9 @@ docker exec disparo_mysql mysql -udisparo -pDisparo@2026 disparo_whats -e "SELEC
 
 1. **Type-check antes de commit**: `npx tsc --noEmit` em `apps/backend` e `apps/web`
 2. **Commit semântico**: `feat:`, `fix:`, `chore:`, `docs:`
-3. **Deploy**: push em master → SSH no VPS → `git pull && docker compose up -d --build backend`
+3. **Deploy backend**: push em master → SSH no VPS → `git pull && docker compose up -d --build backend`
+   **Deploy web** (quando houver mudanças no frontend): `git pull && docker compose up -d --build web`
+   **Deploy tudo**: `git pull && docker compose up -d --build backend web`
 4. **Verificar logs**: `docker logs disparo_backend 2>&1 | grep <padrão> | tail -20`
 5. **Testar**: usar scripts em `deploy/` ou via curl direto
 
@@ -394,6 +445,9 @@ docker exec disparo_mysql mysql -udisparo -pDisparo@2026 disparo_whats -e "SELEC
 - [x] ~~**Status por contato** (aguardando/enviado/falhou)~~ — feito
 - [x] ~~**Mistral AI** como provedor~~ — feito
 - [x] ~~**Integração n8n / Evolution API**~~ — feito (`/integrations/import-group` + sistema de API keys)
+- [x] ~~**Modal de visualização de contatos** com busca, verificar e remover inválidos~~ — feito
+- [x] ~~**Notificação de conclusão N8N**~~ — feito (sinal explícito via `POST /n8n-sync-complete`)
+- [x] ~~**Fix logout ao recarregar página**~~ — feito (zustand hydration + estado `mounted`)
 - [ ] **Aquecimento de chip** (warming): primeiras 24h enviar só para contatos da agenda
 - [ ] **Detecção de ban** automática (tratar `connection.update` com `loggedOut`, marcar sessão)
 - [ ] **Rotação inteligente** de sessões baseada em taxa de erro
