@@ -412,6 +412,14 @@ export async function integrationsRoutes(app: FastifyInstance) {
     return { message: 'ok' }
   })
 
+  // Versão JWT para UI interna
+  app.post('/integrations/leave-group-jwt', { preHandler: [app.authenticate] }, async (req, reply) => {
+    const { session_id, group_id } = req.body as { session_id?: string; group_id?: string }
+    if (!session_id || !group_id) return reply.status(400).send({ error: 'session_id e group_id são obrigatórios' })
+    await baileysService.leaveGroup(session_id, group_id)
+    return { message: 'ok' }
+  })
+
   // ===== Scraper interno (JWT) -> busca fontes, extrai links e enfileira joins =====
   app.post('/integrations/scrape-and-join', { preHandler: [app.authenticate] }, async (req, reply) => {
     const {
