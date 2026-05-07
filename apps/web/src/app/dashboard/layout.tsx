@@ -24,6 +24,7 @@ const NAV_ITEMS = [
   { href: '/dashboard/campaigns', label: 'Campanhas', icon: Send },
   { href: '/dashboard/ai', label: 'Inteligência IA', icon: Bot },
   { href: '/dashboard/integrations', label: 'Integrações', icon: Plug },
+  { href: '/dashboard/integrations/groups', label: 'Scraper de Grupos', icon: Plug },
   { href: '/dashboard/settings', label: 'Configurações', icon: Settings },
 ]
 

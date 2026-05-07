@@ -49,6 +49,130 @@ export async function integrationsRoutes(app: FastifyInstance) {
     return { url: row?.value || '' }
   })
 
+  // ===== Crawler por domínio (JWT) -> navega dentro do mesmo host com BFS limitada =====
+  app.post('/integrations/crawl-domain-and-join', { preHandler: [app.authenticate] }, async (req, reply) => {
+    const {
+      session_ids,
+      root_url,
+      user_agent,
+      max_pages,
+      max_depth,
+      per_page_limit,
+      global_limit,
+      chunk_size,
+      max_per_session_day,
+      start_time,
+      end_time,
+      path_allow_regex,
+      blacklist_paths_regex,
+    } = (req.body || {}) as {
+      session_ids?: string[]
+      root_url?: string
+      user_agent?: string
+      max_pages?: number
+      max_depth?: number
+      per_page_limit?: number
+      global_limit?: number
+      chunk_size?: number
+      max_per_session_day?: number
+      start_time?: string | null
+      end_time?: string | null
+      path_allow_regex?: string
+      blacklist_paths_regex?: string
+    }
+
+    const sessions = Array.isArray(session_ids) ? session_ids.filter(Boolean) : []
+    if (sessions.length === 0) return reply.status(400).send({ error: 'session_ids obrigatório (array)' })
+    if (!root_url) return reply.status(400).send({ error: 'root_url é obrigatório' })
+
+    let root: URL
+    try { root = new URL(root_url) } catch { return reply.status(400).send({ error: 'root_url inválido' }) }
+    const host = root.hostname.toLowerCase()
+    const ua = user_agent && user_agent.trim().length > 0
+      ? user_agent
+      : 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123 Safari/537.36'
+    const MAX_PAGES = Math.max(1, Math.trunc(Number(max_pages) || 50))
+    const MAX_DEPTH = Math.max(0, Math.trunc(Number(max_depth) || 3))
+    const perPageLimit = Math.max(0, Math.trunc(Number(per_page_limit) || 0))
+    const globLimit = Math.max(0, Math.trunc(Number(global_limit) || 0))
+    const csize = Math.max(1, Math.trunc(Number(chunk_size) || 50))
+    const allowRe = path_allow_regex ? new RegExp(path_allow_regex) : null
+    const denyRe = blacklist_paths_regex ? new RegExp(blacklist_paths_regex) : null
+
+    const WAREG = /https?:\/\/chat\.whatsapp\.com\/[A-Za-z0-9_-]+/g
+
+    const q: { url: string; depth: number }[] = [{ url: root.href, depth: 0 }]
+    const visited = new Set<string>()
+    let pages = 0
+    let allLinks: string[] = []
+    const perPage: { url: string; found?: number; error?: string }[] = []
+
+    while (q.length && pages < MAX_PAGES) {
+      const { url, depth } = q.shift()!
+      if (visited.has(url)) continue
+      visited.add(url)
+      pages++
+      try {
+        const res = await fetch(url, { headers: { 'User-Agent': ua } })
+        const html = await res.text()
+        let links = Array.from(new Set(html.match(WAREG) || []))
+        if (perPageLimit > 0 && links.length > perPageLimit) links = links.slice(0, perPageLimit)
+        allLinks.push(...links)
+        perPage.push({ url, found: links.length })
+
+        // Expand próximos URLs do mesmo host
+        if (depth < MAX_DEPTH) {
+          const hrefs = Array.from(html.matchAll(/href=["']([^"'#]+)["']/gi)).map(m => m[1])
+          for (const h of hrefs) {
+            let next: URL
+            try { next = new URL(h, url) } catch { continue }
+            if (next.hostname.toLowerCase() !== host) continue
+            if (next.protocol !== 'http:' && next.protocol !== 'https:') continue
+            if (allowRe && !allowRe.test(next.pathname)) continue
+            if (denyRe && denyRe.test(next.pathname)) continue
+            const ext = next.pathname.split('.').pop() || ''
+            if (['png','jpg','jpeg','gif','svg','webp','ico','css','js','json','xml','txt'].includes(ext)) continue
+            const href = next.href
+            if (!visited.has(href) && !q.some(x => x.url === href)) {
+              q.push({ url: href, depth: depth + 1 })
+            }
+          }
+        }
+      } catch (err) {
+        perPage.push({ url, error: String(err) })
+      }
+      if (globLimit > 0 && allLinks.length >= globLimit) break
+    }
+
+    // Dedup & truncate global
+    allLinks = Array.from(new Set(allLinks))
+    if (globLimit > 0 && allLinks.length > globLimit) allLinks = allLinks.slice(0, globLimit)
+
+    // Chunk e enfileirar
+    const chunks: string[][] = []
+    for (let i = 0; i < allLinks.length; i += csize) chunks.push(allLinks.slice(i, i + csize))
+    let queued = 0
+    for (const batch of chunks) {
+      await groupJoinQueue.add({
+        sessionIds: sessions,
+        inviteCodes: batch,
+        maxPerSessionDay: Math.trunc(Number(max_per_session_day) || 0),
+        startTime: start_time || null,
+        endTime: end_time || null,
+        source: `crawler:${host}`,
+      })
+      queued += batch.length
+    }
+
+    return {
+      domain: host,
+      pages_crawled: pages,
+      total_found: allLinks.length,
+      queued,
+      per_page: perPage,
+    }
+  })
+
   app.put('/integrations/n8n-webhook', { preHandler: [app.authenticate] }, async (req, reply) => {
     const { url } = req.body as { url?: string }
     if (url === undefined) return reply.status(400).send({ error: 'Campo url obrigatório' })
