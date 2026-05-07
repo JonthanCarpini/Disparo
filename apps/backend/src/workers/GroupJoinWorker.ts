@@ -72,6 +72,12 @@ async function processJoins(payload: GroupJoinJob) {
 
   let sessionIndex = 0
   for (const code of codes) {
+    // Kill switch (pausa global)
+    const paused = await queryOne<{ value: string }>("SELECT value FROM settings WHERE `key` = 'group_join_paused'")
+    if (paused?.value === 'true') {
+      logger.warn('Processo pausado por configuração (group_join_paused=true)')
+      break
+    }
     if (!isWithinTimeWindow(startTime, endTime)) {
       logger.info({ code }, 'Fora da janela de horário — interrompendo')
       break
@@ -112,10 +118,10 @@ async function processJoins(payload: GroupJoinJob) {
     )
 
     try {
-      const res = await baileysService.joinGroupByInvite(sessionId, code)
+      const res: any = await baileysService.joinGroupByInvite(sessionId, code)
       await query(
         `UPDATE group_joins SET status = 'joined', group_id = ?, group_name = ? WHERE id = ?`,
-        [res.groupId, res.subject || null, id],
+        [res?.groupId || null, (res?.subject as string) || null, id],
       )
       logger.info({ code, sessionId, groupId: res.groupId }, 'Join em grupo concluído')
     } catch (err) {

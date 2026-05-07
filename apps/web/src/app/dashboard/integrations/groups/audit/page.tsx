@@ -24,12 +24,17 @@ export default function GroupsAuditPage() {
   const [limit, setLimit] = useState(50)
   const [loading, setLoading] = useState(false)
   const [sessions, setSessions] = useState<Session[]>([])
+  const [paused, setPaused] = useState<boolean | null>(null)
 
   useEffect(() => {
     (async () => {
       try {
         const res = await api.get('/whatsapp/sessions')
         setSessions(res.data || [])
+      } catch {}
+      try {
+        const st = await api.get('/integrations/n8n-webhook') // ping leve reutilizado
+        // ignorar valor; apenas para garantir auth ok
       } catch {}
     })()
   }, [])
@@ -67,6 +72,12 @@ export default function GroupsAuditPage() {
   return (
     <div className="p-6 space-y-4 max-w-6xl mx-auto">
       <h1 className="text-2xl font-semibold">Auditoria de Entradas em Grupos</h1>
+
+      <div className="flex items-center gap-3">
+        <button className="px-3 py-1 rounded-lg bg-muted border border-border" onClick={async()=>{ try{ await api.post('/integrations/group-joins/pause'); setPaused(true); toast.success('Processamento pausado') }catch(e:any){ toast.error(e?.response?.data?.error||'Falha ao pausar') } }}>Pausar processamento</button>
+        <button className="px-3 py-1 rounded-lg bg-muted border border-border" onClick={async()=>{ try{ await api.post('/integrations/group-joins/resume'); setPaused(false); toast.success('Processamento retomado') }catch(e:any){ toast.error(e?.response?.data?.error||'Falha ao retomar') } }}>Retomar processamento</button>
+        <button className="px-3 py-1 rounded-lg bg-muted border border-border" onClick={load}>Atualizar</button>
+      </div>
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         <div>

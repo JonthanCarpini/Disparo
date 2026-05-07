@@ -1,11 +1,13 @@
 "use client"
 import React, { useEffect, useMemo, useState } from 'react'
+import { useRouter } from 'next/navigation'
 import { api } from '@/lib/api'
 import { toast } from 'sonner'
 
 interface Session { id: string; name: string; phone: string | null; status: string; warming_daily_limit?: number }
 
 export default function GroupsScraperPage() {
+  const router = useRouter()
   const [sessions, setSessions] = useState<Session[]>([])
   const [selected, setSelected] = useState<string[]>([])
   const [mode, setMode] = useState<'sources' | 'crawler'>('sources')
@@ -66,6 +68,7 @@ export default function GroupsScraperPage() {
         }
         const res = await api.post('/integrations/scrape-and-join', body)
         toast.success(`Encontrados ${res.data.total_found}, enfileirados ${res.data.queued}`)
+        router.push('/dashboard/integrations/groups/audit')
       } catch (e: any) {
         toast.error(e?.response?.data?.error || 'Falha ao iniciar scraper (fontes)')
       } finally {
@@ -94,6 +97,7 @@ export default function GroupsScraperPage() {
         blacklist_paths_regex: denyRegex,
       })
       toast.success(`Domínio: ${res.data.domain} | Páginas: ${res.data.pages_crawled} | Encontrados ${res.data.total_found}, enfileirados ${res.data.queued}`)
+      router.push('/dashboard/integrations/groups/audit')
     } catch (e: any) {
       toast.error(e?.response?.data?.error || 'Falha ao iniciar crawler por domínio')
     } finally {

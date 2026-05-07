@@ -49,6 +49,21 @@ export async function integrationsRoutes(app: FastifyInstance) {
     return { url: row?.value || '' }
   })
 
+  // Pausar/retomar processamento de joins (kill switch para o worker)
+  app.post('/integrations/group-joins/pause', { preHandler: [app.authenticate] }, async () => {
+    await query(
+      "INSERT INTO settings (`key`, `value`) VALUES ('group_join_paused', 'true') ON DUPLICATE KEY UPDATE `value` = 'true'",
+    )
+    return { paused: true }
+  })
+
+  app.post('/integrations/group-joins/resume', { preHandler: [app.authenticate] }, async () => {
+    await query(
+      "INSERT INTO settings (`key`, `value`) VALUES ('group_join_paused', 'false') ON DUPLICATE KEY UPDATE `value` = 'false'",
+    )
+    return { paused: false }
+  })
+
   // ===== Crawler por domínio (JWT) -> navega dentro do mesmo host com BFS limitada =====
   app.post('/integrations/crawl-domain-and-join', { preHandler: [app.authenticate] }, async (req, reply) => {
     const {
