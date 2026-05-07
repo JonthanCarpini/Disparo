@@ -8,6 +8,7 @@ interface Session { id: string; name: string; phone: string | null; status: stri
 export default function GroupsScraperPage() {
   const [sessions, setSessions] = useState<Session[]>([])
   const [selected, setSelected] = useState<string[]>([])
+  const [mode, setMode] = useState<'sources' | 'crawler'>('sources')
   const [sources, setSources] = useState('')
   const [userAgent, setUserAgent] = useState('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123 Safari/537.36')
   const [perSourceLimit, setPerSourceLimit] = useState('100')
@@ -18,6 +19,14 @@ export default function GroupsScraperPage() {
   const [endTime, setEndTime] = useState('')
   const [blacklist, setBlacklist] = useState('facebook.com\ninstagram.com\ntwitter.com\nx.com')
   const [loading, setLoading] = useState(false)
+
+  // Crawler state
+  const [rootUrl, setRootUrl] = useState('https://www.gruposdewhatss.com.br/')
+  const [maxPages, setMaxPages] = useState('80')
+  const [maxDepth, setMaxDepth] = useState('2')
+  const [perPageLimit, setPerPageLimit] = useState('50')
+  const [allowRegex, setAllowRegex] = useState('^/(categoria|grupos|top|pagina|buscar|tag|page)/?.*')
+  const [denyRegex, setDenyRegex] = useState('\\.(png|jpg|jpeg|gif|svg|webp|ico|css|js|json|xml|txt)$')
 
   useEffect(() => {
     (async () => {
@@ -38,26 +47,55 @@ export default function GroupsScraperPage() {
 
   const handleRun = async () => {
     if (selected.length === 0) return toast.error('Selecione ao menos uma sessão')
-    const srcs = sources.split(/\r?\n/).map(s => s.trim()).filter(Boolean)
-    if (srcs.length === 0) return toast.error('Informe ao menos uma fonte')
+    if (mode === 'sources') {
+      const srcs = sources.split(/\r?\n/).map(s => s.trim()).filter(Boolean)
+      if (srcs.length === 0) return toast.error('Informe ao menos uma fonte')
+      setLoading(true)
+      try {
+        const body = {
+          session_ids: selected,
+          sources: srcs,
+          user_agent: userAgent,
+          per_source_limit: parseInt(perSourceLimit) || 0,
+          global_limit: parseInt(globalLimit) || 0,
+          chunk_size: parseInt(chunkSize) || 50,
+          max_per_session_day: parseInt(maxPerSessionDay) || 0,
+          start_time: startTime || null,
+          end_time: endTime || null,
+          blacklist_domains: blacklist.split(/\r?\n|,|;|\s/).map(s => s.trim()).filter(Boolean),
+        }
+        const res = await api.post('/integrations/scrape-and-join', body)
+        toast.success(`Encontrados ${res.data.total_found}, enfileirados ${res.data.queued}`)
+      } catch (e: any) {
+        toast.error(e?.response?.data?.error || 'Falha ao iniciar scraper (fontes)')
+      } finally {
+        setLoading(false)
+      }
+      return
+    }
+
+    // crawler mode
+    if (!rootUrl) return toast.error('Informe a URL raiz do domínio')
     setLoading(true)
     try {
-      const body = {
+      const res = await api.post('/integrations/crawl-domain-and-join', {
         session_ids: selected,
-        sources: srcs,
+        root_url: rootUrl,
         user_agent: userAgent,
-        per_source_limit: parseInt(perSourceLimit) || 0,
+        max_pages: parseInt(maxPages) || 50,
+        max_depth: parseInt(maxDepth) || 2,
+        per_page_limit: parseInt(perPageLimit) || 0,
         global_limit: parseInt(globalLimit) || 0,
         chunk_size: parseInt(chunkSize) || 50,
         max_per_session_day: parseInt(maxPerSessionDay) || 0,
         start_time: startTime || null,
         end_time: endTime || null,
-        blacklist_domains: blacklist.split(/\r?\n|,|;|\s/).map(s => s.trim()).filter(Boolean),
-      }
-      const res = await api.post('/integrations/scrape-and-join', body)
-      toast.success(`Encontrados ${res.data.total_found}, enfileirados ${res.data.queued}`)
+        path_allow_regex: allowRegex,
+        blacklist_paths_regex: denyRegex,
+      })
+      toast.success(`Domínio: ${res.data.domain} | Páginas: ${res.data.pages_crawled} | Encontrados ${res.data.total_found}, enfileirados ${res.data.queued}`)
     } catch (e: any) {
-      toast.error(e?.response?.data?.error || 'Falha ao iniciar scraper')
+      toast.error(e?.response?.data?.error || 'Falha ao iniciar crawler por domínio')
     } finally {
       setLoading(false)
     }
@@ -80,10 +118,51 @@ export default function GroupsScraperPage() {
         </div>
       </section>
 
-      <section className="space-y-2">
-        <h2 className="font-medium">2) Fontes (uma por linha)</h2>
-        <textarea value={sources} onChange={e => setSources(e.target.value)} rows={5}
-          className="w-full p-3 rounded-xl bg-muted border border-border" placeholder="https://exemplo.com/lista-de-grupos.html" />
+      <section className="space-y-3">
+        <div className="flex items-center gap-3">
+          <button onClick={() => setMode('sources')} className={`px-3 py-1.5 rounded-lg text-sm ${mode==='sources'?'bg-primary text-primary-foreground':'bg-muted text-foreground'}`}>Modo: Fontes</button>
+          <button onClick={() => setMode('crawler')} className={`px-3 py-1.5 rounded-lg text-sm ${mode==='crawler'?'bg-primary text-primary-foreground':'bg-muted text-foreground'}`}>Modo: Crawler por Domínio</button>
+        </div>
+
+        {mode === 'sources' && (
+          <div className="space-y-2">
+            <h2 className="font-medium">2) Fontes (uma por linha)</h2>
+            <textarea value={sources} onChange={e => setSources(e.target.value)} rows={5}
+              className="w-full p-3 rounded-xl bg-muted border border-border" placeholder="https://exemplo.com/lista-de-grupos.html" />
+          </div>
+        )}
+
+        {mode === 'crawler' && (
+          <div className="space-y-4">
+            <h2 className="font-medium">2) Crawler por Domínio</h2>
+            <div>
+              <label className="block text-sm text-muted-foreground mb-1">URL raiz</label>
+              <input value={rootUrl} onChange={e => setRootUrl(e.target.value)} className="w-full p-2 rounded-xl bg-muted border border-border" />
+            </div>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              <div>
+                <label className="block text-sm text-muted-foreground mb-1">Máx páginas</label>
+                <input value={maxPages} onChange={e => setMaxPages(e.target.value)} className="w-full p-2 rounded-xl bg-muted border border-border" />
+              </div>
+              <div>
+                <label className="block text-sm text-muted-foreground mb-1">Máx profundidade</label>
+                <input value={maxDepth} onChange={e => setMaxDepth(e.target.value)} className="w-full p-2 rounded-xl bg-muted border border-border" />
+              </div>
+              <div>
+                <label className="block text-sm text-muted-foreground mb-1">Limite por página</label>
+                <input value={perPageLimit} onChange={e => setPerPageLimit(e.target.value)} className="w-full p-2 rounded-xl bg-muted border border-border" />
+              </div>
+            </div>
+            <div>
+              <label className="block text-sm text-muted-foreground mb-1">Allow path (regex)</label>
+              <input value={allowRegex} onChange={e => setAllowRegex(e.target.value)} className="w-full p-2 rounded-xl bg-muted border border-border" />
+            </div>
+            <div>
+              <label className="block text-sm text-muted-foreground mb-1">Deny path (regex)</label>
+              <input value={denyRegex} onChange={e => setDenyRegex(e.target.value)} className="w-full p-2 rounded-xl bg-muted border border-border" />
+            </div>
+          </div>
+        )}
       </section>
 
       <section className="grid grid-cols-1 md:grid-cols-2 gap-4">
