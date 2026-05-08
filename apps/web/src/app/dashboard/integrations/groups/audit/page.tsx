@@ -7,6 +7,7 @@ interface JoinRow {
   id: number
   session_id: string
   invite_code: string
+  invite_link?: string
   status: 'queued'|'joined'|'failed'|'skipped'
   error: string | null
   source: string | null
@@ -115,7 +116,7 @@ export default function GroupsAuditPage() {
             <tr>
               <th className="text-left p-2">Data</th>
               <th className="text-left p-2">Sessão</th>
-              <th className="text-left p-2">Invite</th>
+              <th className="text-left p-2">Convite</th>
               <th className="text-left p-2">Status</th>
               <th className="text-left p-2">Fonte</th>
               <th className="text-left p-2">Erro</th>
@@ -127,7 +128,7 @@ export default function GroupsAuditPage() {
               <tr key={r.id} className="border-t border-border">
                 <td className="p-2">{new Date(r.created_at).toLocaleString()}</td>
                 <td className="p-2">{r.session_id}</td>
-                <td className="p-2"><a href={r.invite_code} className="text-primary underline" target="_blank">abrir</a></td>
+                <td className="p-2"><a href={r.invite_link || `https://chat.whatsapp.com/${r.invite_code}`} className="text-primary underline" target="_blank" rel="noreferrer">abrir</a></td>
                 <td className="p-2">{r.status}</td>
                 <td className="p-2">{r.source || '-'}</td>
                 <td className="p-2 text-destructive">{r.error || '-'}</td>

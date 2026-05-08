@@ -92,9 +92,9 @@ async function processJoins(payload: GroupJoinJob) {
       if (today >= maxPerSessionDay) {
         logger.info({ sessionId, today, maxPerSessionDay }, 'Limite diário por sessão atingido — pulando')
         await query(
-          `INSERT IGNORE INTO group_joins (id, source, invite_link, invite_code, session_id, status)
-           VALUES (?, ?, ?, ?, ?, 'skipped')`,
-          [uuidv4(), source, code, code, sessionId],
+          `INSERT IGNORE INTO group_joins (id, source, invite_link, invite_code, session_id, status, error)
+           VALUES (?, ?, ?, ?, ?, 'skipped', 'daily_limit_reached')`,
+          [uuidv4(), source, `https://chat.whatsapp.com/${code}`, code, sessionId],
         )
         continue
       }
@@ -114,7 +114,7 @@ async function processJoins(payload: GroupJoinJob) {
     await query(
       `INSERT INTO group_joins (id, source, invite_link, invite_code, session_id, status)
        VALUES (?, ?, ?, ?, ?, 'pending')`,
-      [id, source, code, code, sessionId],
+      [id, source, `https://chat.whatsapp.com/${code}`, code, sessionId],
     )
 
     try {
