@@ -64,8 +64,19 @@ function extractInviteCode(linkOrCode: string): string | null {
 async function processJoins(payload: GroupJoinJob) {
   const { sessionIds, inviteCodes, maxPerSessionDay = 0, startTime = null, endTime = null, source = 'scraper' } = payload
 
-  const liveSessions = sessionIds.filter((s) => baileysService.isConnected(s))
-  if (liveSessions.length === 0) throw new Error('Nenhuma sessão conectada para join em grupos')
+  let liveSessions = sessionIds.filter((s) => baileysService.isConnected(s))
+  if (liveSessions.length === 0) {
+    logger.warn({ sessionIds }, 'Nenhuma sessão conectada — registrando convites como skipped:no_connected_sessions')
+    const nowSkips = Array.from(new Set(inviteCodes.map(extractInviteCode).filter((x): x is string => !!x)))
+    for (const code of nowSkips) {
+      await query(
+        `INSERT IGNORE INTO group_joins (id, source, invite_link, invite_code, session_id, status, error)
+         VALUES (?, ?, ?, ?, ?, 'skipped', 'no_connected_sessions')`,
+        [uuidv4(), source, `https://chat.whatsapp.com/${code}`, code, sessionIds[0] || null],
+      )
+    }
+    return
+  }
 
   const codes = Array.from(new Set(inviteCodes.map(extractInviteCode).filter((x): x is string => !!x)))
   if (codes.length === 0) return
@@ -88,7 +99,28 @@ async function processJoins(payload: GroupJoinJob) {
       continue
     }
 
-    const sessionId = liveSessions[sessionIndex % liveSessions.length]
+    // Escolhe sessão e revalida conexão; se cair, tenta as próximas
+    let tryCount = 0
+    let sessionId = liveSessions[sessionIndex % liveSessions.length]
+    while (tryCount < liveSessions.length && !baileysService.isConnected(sessionId)) {
+      tryCount++
+      sessionIndex++
+      sessionId = liveSessions[sessionIndex % liveSessions.length]
+    }
+    if (!baileysService.isConnected(sessionId)) {
+      // refresh pool e registrar skip
+      liveSessions = sessionIds.filter((s) => baileysService.isConnected(s))
+      if (liveSessions.length === 0) {
+        await query(
+          `INSERT IGNORE INTO group_joins (id, source, invite_link, invite_code, session_id, status, error)
+           VALUES (?, ?, ?, ?, ?, 'skipped', 'session_not_connected')`,
+          [uuidv4(), source, `https://chat.whatsapp.com/${code}`, code, sessionIds[0] || null],
+        )
+        logger.warn({ code }, 'Todas sessões desconectadas — skipped: session_not_connected')
+        continue
+      }
+      sessionId = liveSessions[sessionIndex % liveSessions.length]
+    }
     sessionIndex++
 
     // Limite por dia/sessão
