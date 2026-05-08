@@ -64,6 +64,22 @@ export async function integrationsRoutes(app: FastifyInstance) {
     return { paused: false }
   })
 
+  // Status da fila de joins (diagnóstico)
+  app.get('/integrations/group-joins/status', { preHandler: [app.authenticate] }, async () => {
+    const paused = await queryOne<{ value: string }>(
+      "SELECT value FROM settings WHERE `key` = 'group_join_paused'",
+    )
+    const waiting = await groupJoinQueue.getWaitingCount()
+    const active = await groupJoinQueue.getActiveCount()
+    const delayed = await groupJoinQueue.getDelayedCount()
+    const failed = await groupJoinQueue.getFailedCount()
+    const completed = await groupJoinQueue.getCompletedCount()
+    return {
+      paused: paused?.value === 'true',
+      queue: { waiting, active, delayed, failed, completed },
+    }
+  })
+
   // ===== Crawler por domínio (JWT) -> navega dentro do mesmo host com BFS limitada =====
   app.post('/integrations/crawl-domain-and-join', { preHandler: [app.authenticate] }, async (req, reply) => {
     const {
@@ -128,7 +144,10 @@ export async function integrationsRoutes(app: FastifyInstance) {
       visited.add(url)
       pages++
       try {
-        const res = await fetch(url, { headers: { 'User-Agent': ua } })
+        const ctrl = new AbortController()
+        const to = setTimeout(() => ctrl.abort(), 10000)
+        const res = await fetch(url, { headers: { 'User-Agent': ua }, signal: ctrl.signal })
+        clearTimeout(to)
         const html = await res.text()
         let links = Array.from(new Set(html.match(WAREG) || []))
         if (perPageLimit > 0 && links.length > perPageLimit) links = links.slice(0, perPageLimit)
@@ -492,7 +511,10 @@ export async function integrationsRoutes(app: FastifyInstance) {
 
     for (const url of srcs) {
       try {
-        const res = await fetch(url, { headers: { 'User-Agent': ua } })
+        const ctrl = new AbortController()
+        const to = setTimeout(() => ctrl.abort(), 10000)
+        const res = await fetch(url, { headers: { 'User-Agent': ua }, signal: ctrl.signal })
+        clearTimeout(to)
         const text = await res.text()
         let links = Array.from(new Set(text.match(WAREG) || []))
         links = links.filter((l) => !bl.has(host(l)))

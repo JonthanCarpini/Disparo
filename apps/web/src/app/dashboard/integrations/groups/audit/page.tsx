@@ -29,6 +29,7 @@ export default function GroupsAuditPage() {
   const [loading, setLoading] = useState(false)
   const [sessions, setSessions] = useState<Session[]>([])
   const [paused, setPaused] = useState<boolean | null>(null)
+  const [queue, setQueue] = useState<{waiting:number;active:number;delayed:number;failed:number;completed:number} | null>(null)
 
   useEffect(() => {
     (async () => {
@@ -46,6 +47,11 @@ export default function GroupsAuditPage() {
   const load = async () => {
     setLoading(true)
     try {
+      try {
+        const st = await api.get('/integrations/group-joins/status')
+        setPaused(Boolean(st.data?.paused))
+        setQueue(st.data?.queue || null)
+      } catch {}
       const res = await api.get('/integrations/group-joins', { params: { status: status || undefined, session_id: sessionId || undefined, page, limit, source: source || undefined, from: from || undefined, to: to || undefined } })
       const arr = (res.data || []) as JoinRow[]
       setRows(arr.sort((a,b)=> new Date(b.created_at).getTime() - new Date(a.created_at).getTime()))
@@ -82,6 +88,12 @@ export default function GroupsAuditPage() {
         <button className="px-3 py-1 rounded-lg bg-muted border border-border" onClick={async()=>{ try{ await api.post('/integrations/group-joins/pause'); setPaused(true); toast.success('Processamento pausado') }catch(e:any){ toast.error(e?.response?.data?.error||'Falha ao pausar') } }}>Pausar processamento</button>
         <button className="px-3 py-1 rounded-lg bg-muted border border-border" onClick={async()=>{ try{ await api.post('/integrations/group-joins/resume'); setPaused(false); toast.success('Processamento retomado') }catch(e:any){ toast.error(e?.response?.data?.error||'Falha ao retomar') } }}>Retomar processamento</button>
         <button className="px-3 py-1 rounded-lg bg-muted border border-border" onClick={load}>Atualizar</button>
+        {paused !== null && (
+          <span className={`px-2 py-1 rounded-lg text-xs ${paused?'bg-yellow-600/20 text-yellow-400':'bg-emerald-600/20 text-emerald-400'}`}>paused: {String(paused)}</span>
+        )}
+        {queue && (
+          <span className="text-xs text-muted-foreground">waiting:{queue.waiting} active:{queue.active} delayed:{queue.delayed} failed:{queue.failed} completed:{queue.completed}</span>
+        )}
       </div>
 
       <div className="grid grid-cols-2 md:grid-cols-6 gap-3">
