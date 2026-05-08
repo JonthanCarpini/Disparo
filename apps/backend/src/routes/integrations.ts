@@ -311,6 +311,25 @@ export async function integrationsRoutes(app: FastifyInstance) {
     allLinks = Array.from(new Set(allLinks))
     if (globLimit > 0 && allLinks.length > globLimit) allLinks = allLinks.slice(0, globLimit)
 
+    // Persistir em scraped_groups (dedup global por invite_code via UNIQUE)
+    if (allLinks.length > 0) {
+      const values: unknown[] = []
+      const rows: string[] = []
+      for (const link of allLinks) {
+        const code = link.split('/').pop()!
+        rows.push('(?, ?, ?, ?, NOW(), NOW())')
+        values.push(uuidv4(), link, code, `crawler:${host}`)
+      }
+      try {
+        await query(
+          `INSERT IGNORE INTO scraped_groups (id, invite_link, invite_code, source, created_at, updated_at) VALUES ${rows.join(',')}`,
+          values,
+        )
+      } catch (err) {
+        logger.warn({ err: String(err) }, 'Falha ao salvar scraped_groups para crawler')
+      }
+    }
+
     // Chunk e enfileirar
     const chunks: string[][] = []
     for (let i = 0; i < allLinks.length; i += csize) chunks.push(allLinks.slice(i, i + csize))
