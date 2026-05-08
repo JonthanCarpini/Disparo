@@ -129,13 +129,21 @@ export async function integrationsRoutes(app: FastifyInstance) {
     const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : ''
 
     return query(
-      `SELECT sg.*, 
-              CASE WHEN gj.status IS NOT NULL THEN 1 ELSE 0 END as already_enqueued,
-              MAX(CASE WHEN gj.status = 'joined' THEN 1 ELSE 0 END) as already_joined
+      `SELECT 
+          sg.id,
+          sg.invite_link,
+          sg.invite_code,
+          sg.source,
+          sg.name,
+          sg.created_at,
+          CASE WHEN EXISTS (
+            SELECT 1 FROM group_joins gj WHERE gj.invite_code = sg.invite_code LIMIT 1
+          ) THEN 1 ELSE 0 END AS already_enqueued,
+          CASE WHEN EXISTS (
+            SELECT 1 FROM group_joins gj2 WHERE gj2.invite_code = sg.invite_code AND gj2.status = 'joined' LIMIT 1
+          ) THEN 1 ELSE 0 END AS already_joined
        FROM scraped_groups sg
-       LEFT JOIN group_joins gj ON gj.invite_code = sg.invite_code
        ${whereSql}
-       GROUP BY sg.id
        ORDER BY sg.created_at DESC
        LIMIT ${limitVal} OFFSET ${offset}`,
       values,
