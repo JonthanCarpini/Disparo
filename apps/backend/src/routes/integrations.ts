@@ -49,6 +49,127 @@ export async function integrationsRoutes(app: FastifyInstance) {
     return { url: row?.value || '' }
   })
 
+  // ===== Etapa 1: Scrape-Only (salva em scraped_groups, sem enfileirar) =====
+  app.post('/integrations/scrape-only', { preHandler: [app.authenticate] }, async (req, reply) => {
+    const { sources, user_agent, per_source_limit, global_limit, blacklist_domains } = (req.body || {}) as {
+      sources?: string[] | string
+      user_agent?: string
+      per_source_limit?: number
+      global_limit?: number
+      blacklist_domains?: string[]
+    }
+
+    const srcs: string[] = Array.isArray(sources)
+      ? sources.filter(Boolean)
+      : typeof sources === 'string'
+        ? sources.split(/\r?\n|,|;/).map((s) => s.trim()).filter(Boolean)
+        : []
+    if (srcs.length === 0) return reply.status(400).send({ error: 'sources vazio' })
+
+    const ua = user_agent && user_agent.trim().length > 0
+      ? user_agent
+      : 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123 Safari/537.36'
+    const perLimit = Math.max(0, Math.trunc(Number(per_source_limit) || 0))
+    const globLimit = Math.max(0, Math.trunc(Number(global_limit) || 0))
+    const bl = new Set((blacklist_domains || []).map((d) => String(d).toLowerCase()))
+
+    const WAREG = /https?:\/\/chat\.whatsapp\.com\/[A-Za-z0-9_-]+/g
+    const host = (u: string) => { try { return new URL(u).hostname.toLowerCase() } catch { return '' } }
+
+    let allLinks: string[] = []
+    const perSource: { url: string; found?: number; error?: string }[] = []
+
+    for (const url of srcs) {
+      try {
+        const ctrl = new AbortController()
+        const to = setTimeout(() => ctrl.abort(), 10000)
+        const res = await fetch(url, { headers: { 'User-Agent': ua }, signal: ctrl.signal })
+        clearTimeout(to)
+        const text = await res.text()
+        let links = Array.from(new Set(text.match(WAREG) || []))
+        links = links.filter((l) => !bl.has(host(l)))
+        if (perLimit > 0 && links.length > perLimit) links = links.slice(0, perLimit)
+        allLinks.push(...links)
+        perSource.push({ url, found: links.length })
+      } catch (err) {
+        perSource.push({ url, error: String(err) })
+      }
+    }
+
+    allLinks = Array.from(new Set(allLinks))
+    if (globLimit > 0 && allLinks.length > globLimit) allLinks = allLinks.slice(0, globLimit)
+
+    // Persistir em scraped_groups (dedup por invite_code com UNIQUE)
+    const values: unknown[] = []
+    const rows: string[] = []
+    for (const link of allLinks) {
+      const code = link.split('/').pop()!
+      rows.push('(?, ?, ?, ?, NOW(), NOW())')
+      values.push(uuidv4(), link, code, srcs[0] || 'scraper')
+    }
+    if (rows.length > 0) {
+      await query(
+        `INSERT IGNORE INTO scraped_groups (id, invite_link, invite_code, source, created_at, updated_at) VALUES ${rows.join(',')}`,
+        values,
+      )
+    }
+
+    return { total_saved: allLinks.length, sources: perSource }
+  })
+
+  // Listar grupos raspados (com informação se já entrou ou está pending)
+  app.get('/integrations/scraped-groups', { preHandler: [app.authenticate] }, async (req) => {
+    const { page = '1', limit = '50', source, q } = req.query as { page?: string; limit?: string; source?: string; q?: string }
+    const limitVal = Math.max(1, parseInt(limit) || 50)
+    const offset = (Math.max(1, parseInt(page) || 1) - 1) * limitVal
+    const where: string[] = []
+    const values: unknown[] = []
+    if (source) { where.push('sg.source = ?'); values.push(source) }
+    if (q) { where.push('(sg.invite_code LIKE ? OR sg.name LIKE ? OR sg.source LIKE ?)'); values.push(`%${q}%`, `%${q}%`, `%${q}%`) }
+    const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : ''
+
+    return query(
+      `SELECT sg.*, 
+              CASE WHEN gj.status IS NOT NULL THEN 1 ELSE 0 END as already_enqueued,
+              MAX(CASE WHEN gj.status = 'joined' THEN 1 ELSE 0 END) as already_joined
+       FROM scraped_groups sg
+       LEFT JOIN group_joins gj ON gj.invite_code = sg.invite_code
+       ${whereSql}
+       GROUP BY sg.id
+       ORDER BY sg.created_at DESC
+       LIMIT ${limitVal} OFFSET ${offset}`,
+      values,
+    )
+  })
+
+  // ===== Etapa 2: Enfileirar joins a partir de scraped_groups selecionados =====
+  app.post('/integrations/enqueue-scraped-joins', { preHandler: [app.authenticate] }, async (req, reply) => {
+    const { session_ids, invite_codes, max_per_session_day, start_time, end_time, source } = (req.body || {}) as {
+      session_ids?: string[]
+      invite_codes?: string[]
+      max_per_session_day?: number
+      start_time?: string | null
+      end_time?: string | null
+      source?: string
+    }
+
+    const sessions = Array.isArray(session_ids) ? session_ids.filter(Boolean) : []
+    if (sessions.length === 0) return reply.status(400).send({ error: 'session_ids obrigatório (array)' })
+    const codes = Array.isArray(invite_codes) ? invite_codes.filter(Boolean) : []
+    if (codes.length === 0) return reply.status(400).send({ error: 'invite_codes obrigatório (array)' })
+
+    await groupJoinQueue.add({
+      sessionIds: sessions,
+      inviteCodes: codes.map((c) => `https://chat.whatsapp.com/${c}`),
+      maxPerSessionDay: Math.trunc(Number(max_per_session_day) || 0),
+      startTime: start_time || null,
+      endTime: end_time || null,
+      source: source || 'scraped_list',
+    })
+
+    return { queued: codes.length, sessions: sessions.length }
+  })
+
   // Pausar/retomar processamento de joins (kill switch para o worker)
   app.post('/integrations/group-joins/pause', { preHandler: [app.authenticate] }, async () => {
     await query(

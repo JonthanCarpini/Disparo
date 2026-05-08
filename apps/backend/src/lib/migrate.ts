@@ -172,6 +172,20 @@ export async function runMigrations() {
     )
   `)
 
+  await db.execute(`
+    CREATE TABLE IF NOT EXISTS scraped_groups (
+      id VARCHAR(36) PRIMARY KEY,
+      invite_link VARCHAR(500) NOT NULL,
+      invite_code VARCHAR(120) NOT NULL UNIQUE,
+      source VARCHAR(255),
+      name VARCHAR(255),
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+      INDEX idx_scraped_source (source),
+      INDEX idx_scraped_created (created_at)
+    )
+  `)
+
   logger.info('Migração concluída com sucesso')
 }
 

@@ -55,22 +55,17 @@ export default function GroupsScraperPage() {
       setLoading(true)
       try {
         const body = {
-          session_ids: selected,
           sources: srcs,
           user_agent: userAgent,
           per_source_limit: parseInt(perSourceLimit) || 0,
           global_limit: parseInt(globalLimit) || 0,
-          chunk_size: parseInt(chunkSize) || 50,
-          max_per_session_day: parseInt(maxPerSessionDay) || 0,
-          start_time: startTime || null,
-          end_time: endTime || null,
           blacklist_domains: blacklist.split(/\r?\n|,|;|\s/).map(s => s.trim()).filter(Boolean),
         }
-        const res = await api.post('/integrations/scrape-and-join', body)
-        toast.success(`Encontrados ${res.data.total_found}, enfileirados ${res.data.queued}`)
-        router.push('/dashboard/integrations/groups/audit')
+        const res = await api.post('/integrations/scrape-only', body)
+        toast.success(`Salvos ${res.data.total_saved} convites`)
+        router.push('/dashboard/integrations/groups/found')
       } catch (e: any) {
-        toast.error(e?.response?.data?.error || 'Falha ao iniciar scraper (fontes)')
+        toast.error(e?.response?.data?.error || 'Falha ao raspar (fontes)')
       } finally {
         setLoading(false)
       }
@@ -211,6 +206,10 @@ export default function GroupsScraperPage() {
         <button disabled={loading} onClick={handleRun}
           className="px-4 py-2 rounded-xl bg-primary text-primary-foreground disabled:opacity-50">
           {loading ? 'Processando...' : 'Iniciar Scraper' }
+        </button>
+        <button onClick={() => router.push('/dashboard/integrations/groups/found')}
+          className="px-4 py-2 rounded-xl bg-muted border border-border">
+          Ver Grupos Encontrados
         </button>
       </div>
     </div>
