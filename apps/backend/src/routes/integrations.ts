@@ -405,13 +405,16 @@ export async function integrationsRoutes(app: FastifyInstance) {
 
   // Auditoria: listar joins
   app.get('/integrations/group-joins', { preHandler: [app.authenticate] }, async (req) => {
-    const { status, session_id, page = '1', limit = '50' } = req.query as { status?: string; session_id?: string; page?: string; limit?: string }
+    const { status, session_id, page = '1', limit = '50', from, to, source } = req.query as { status?: string; session_id?: string; page?: string; limit?: string; from?: string; to?: string; source?: string }
     const limitVal = Math.max(1, parseInt(limit) || 50)
     const offset = (Math.max(1, parseInt(page) || 1) - 1) * limitVal
     const where: string[] = []
     const values: unknown[] = []
     if (status) { where.push('status = ?'); values.push(status) }
     if (session_id) { where.push('session_id = ?'); values.push(session_id) }
+    if (source) { where.push('source = ?'); values.push(source) }
+    if (from) { where.push('created_at >= ?'); values.push(from) }
+    if (to) { where.push('created_at <= ?'); values.push(to) }
     const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : ''
     return query(
       `SELECT * FROM group_joins ${whereSql} ORDER BY created_at DESC LIMIT ${limitVal} OFFSET ${offset}`,

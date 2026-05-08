@@ -79,8 +79,13 @@ async function processJoins(payload: GroupJoinJob) {
       break
     }
     if (!isWithinTimeWindow(startTime, endTime)) {
-      logger.info({ code }, 'Fora da janela de horário — interrompendo')
-      break
+      logger.info({ code }, 'Fora da janela de horário — pulando convite')
+      await query(
+        `INSERT INTO group_joins (id, source, invite_link, invite_code, session_id, status, error)
+         VALUES (?, ?, ?, ?, ?, 'skipped', 'window_outside')`,
+        [uuidv4(), source, `https://chat.whatsapp.com/${code}`, code, liveSessions[sessionIndex % liveSessions.length]],
+      )
+      continue
     }
 
     const sessionId = liveSessions[sessionIndex % liveSessions.length]
@@ -106,7 +111,12 @@ async function processJoins(payload: GroupJoinJob) {
       [code, sessionId],
     )
     if (exists) {
-      logger.info({ code, sessionId }, 'Convite já processado — pulando')
+      logger.info({ code, sessionId }, 'Convite já processado — pulando (registrando auditoria)')
+      await query(
+        `INSERT INTO group_joins (id, source, invite_link, invite_code, session_id, status, error)
+         VALUES (?, ?, ?, ?, ?, 'skipped', 'already_processed')`,
+        [uuidv4(), source, `https://chat.whatsapp.com/${code}`, code, sessionId],
+      )
       continue
     }
 

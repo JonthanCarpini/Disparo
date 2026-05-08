@@ -23,6 +23,9 @@ export default function GroupsAuditPage() {
   const [sessionId, setSessionId] = useState('')
   const [page, setPage] = useState(1)
   const [limit, setLimit] = useState(50)
+  const [source, setSource] = useState('')
+  const [from, setFrom] = useState('')
+  const [to, setTo] = useState('')
   const [loading, setLoading] = useState(false)
   const [sessions, setSessions] = useState<Session[]>([])
   const [paused, setPaused] = useState<boolean | null>(null)
@@ -43,8 +46,9 @@ export default function GroupsAuditPage() {
   const load = async () => {
     setLoading(true)
     try {
-      const res = await api.get('/integrations/group-joins', { params: { status: status || undefined, session_id: sessionId || undefined, page, limit } })
-      setRows(res.data || [])
+      const res = await api.get('/integrations/group-joins', { params: { status: status || undefined, session_id: sessionId || undefined, page, limit, source: source || undefined, from: from || undefined, to: to || undefined } })
+      const arr = (res.data || []) as JoinRow[]
+      setRows(arr.sort((a,b)=> new Date(b.created_at).getTime() - new Date(a.created_at).getTime()))
     } catch (e: any) {
       toast.error(e?.response?.data?.error || 'Falha ao carregar auditoria')
     } finally {
@@ -53,7 +57,7 @@ export default function GroupsAuditPage() {
   }
 
   useEffect(() => { load() // eslint-disable-next-line
-  }, [status, sessionId, page, limit])
+  }, [status, sessionId, page, limit, source, from, to])
 
   const connected = useMemo(() => sessions.filter(s => s.status === 'connected'), [sessions])
 
@@ -80,7 +84,7 @@ export default function GroupsAuditPage() {
         <button className="px-3 py-1 rounded-lg bg-muted border border-border" onClick={load}>Atualizar</button>
       </div>
 
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+      <div className="grid grid-cols-2 md:grid-cols-6 gap-3">
         <div>
           <label className="block text-sm text-muted-foreground mb-1">Status</label>
           <select value={status} onChange={e => setStatus(e.target.value)} className="w-full p-2 rounded-xl bg-muted border border-border">
@@ -90,6 +94,18 @@ export default function GroupsAuditPage() {
             <option value="failed">failed</option>
             <option value="skipped">skipped</option>
           </select>
+        </div>
+        <div>
+          <label className="block text-sm text-muted-foreground mb-1">Fonte</label>
+          <input value={source} onChange={e => setSource(e.target.value)} className="w-full p-2 rounded-xl bg-muted border border-border" placeholder="ex: crawler:www.gruposdewhatss.com.br" />
+        </div>
+        <div>
+          <label className="block text-sm text-muted-foreground mb-1">De (YYYY-MM-DD)</label>
+          <input value={from} onChange={e => setFrom(e.target.value)} className="w-full p-2 rounded-xl bg-muted border border-border" />
+        </div>
+        <div>
+          <label className="block text-sm text-muted-foreground mb-1">Até (YYYY-MM-DD)</label>
+          <input value={to} onChange={e => setTo(e.target.value)} className="w-full p-2 rounded-xl bg-muted border border-border" />
         </div>
         <div>
           <label className="block text-sm text-muted-foreground mb-1">Sessão</label>
@@ -128,7 +144,7 @@ export default function GroupsAuditPage() {
               <tr key={r.id} className="border-t border-border">
                 <td className="p-2">{new Date(r.created_at).toLocaleString()}</td>
                 <td className="p-2">{r.session_id}</td>
-                <td className="p-2"><a href={r.invite_link || `https://chat.whatsapp.com/${r.invite_code}`} className="text-primary underline" target="_blank" rel="noreferrer">abrir</a></td>
+                <td className="p-2"><a href={r.invite_link || `https://chat.whatsapp.com/${r.invite_code}`} className="text-primary underline" target="_blank" rel="noopener noreferrer">abrir</a></td>
                 <td className="p-2">{r.status}</td>
                 <td className="p-2">{r.source || '-'}</td>
                 <td className="p-2 text-destructive">{r.error || '-'}</td>
