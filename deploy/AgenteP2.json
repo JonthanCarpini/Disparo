@@ -1,0 +1,2550 @@
+﻿{
+  "name": "AgenteP2",
+  "nodes": [
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "78131df6-3f64-4f44-9607-aa2737238bb3",
+              "name": "qpanel_username",
+              "value": "Carpine9551",
+              "type": "string"
+            },
+            {
+              "id": "1387840d-6817-42d8-89bf-2e2bd07f7c21",
+              "name": "qpanel_password",
+              "value": "wVzKabnQGQ5915~",
+              "type": "string"
+            },
+            {
+              "id": "8450a3a0-4079-4407-b19f-c50fb923ada4",
+              "name": "buscaCliente1",
+              "value": "={{ $('Webhook WhatsApp').item.json.body.data.key.remoteJid.split(\"@\")[0].slice(-4) }}",
+              "type": "string"
+            },
+            {
+              "id": "aae9decf-0c4f-4f35-bbbc-fb3d7c59434f",
+              "name": "wCliente",
+              "value": "={{ $('Webhook WhatsApp').item.json.body.data.key.remoteJid.split(\"@\")[0] }}",
+              "type": "string"
+            },
+            {
+              "id": "902021eb-0986-4ae3-a7a9-beb4ecdfeef8",
+              "name": "instancia",
+              "value": "={{ $('Webhook WhatsApp').item.json.body.instance }}",
+              "type": "string"
+            },
+            {
+              "id": "a88cbb31-4c39-4405-ab4d-67a13c7bbdb1",
+              "name": "nomeCliente",
+              "value": "={{ $('Webhook WhatsApp').item.json.body.data.pushName }}",
+              "type": "string"
+            },
+            {
+              "id": "60a7c716-0bbe-445b-90aa-129dbef0a7a2",
+              "name": "telefoneCliente",
+              "value": "={{ $('Webhook WhatsApp').item.json.body.data.key.remoteJid.split(\"@\")[0].slice(2) }}",
+              "type": "string"
+            },
+            {
+              "id": "5a975196-6e43-48f2-a783-cccfac4fef9f",
+              "name": "buscaCliente",
+              "value": "9140",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -240,
+        -32
+      ],
+      "id": "49add19f-78ab-4ae8-a07f-151229729d6a",
+      "name": "InformaÃ§Ãµes Globais"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://playplus.carpini2023.workers.dev/?url=https://painel.p2player.top/api/auth/login&cookies=",
+        "sendHeaders": true,
+        "specifyHeaders": "json",
+        "jsonHeaders": "{\n  \"Content-Type\": \"application/json\",\n  \"Accept\": \"application/json\",\n  \"User-Agent\": \"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36\"\n}",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"username\": \"{{$json.qpanel_username}}\",\n  \"password\": \"{{$json.qpanel_password}}\"\n}",
+        "options": {
+          "response": {
+            "response": {
+              "fullResponse": true
+            }
+          }
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        -16,
+        -32
+      ],
+      "id": "f2b46e36-bfee-41fa-87b6-40bab66ee955",
+      "name": "Login QPanel"
+    },
+    {
+      "parameters": {
+        "amount": 15
+      },
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        -16,
+        272
+      ],
+      "id": "1fe95ddb-2433-4959-820d-ea25f8bc77dc",
+      "name": "Wait",
+      "webhookId": "3a963083-4350-42b4-bd9a-1903067dcbfa"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "9323ed25-16b3-4124-bfd3-e04c5a49a549",
+              "leftValue": "={{ $json.body.id && $json.body.token }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "exists",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        208,
+        -32
+      ],
+      "id": "cd448da8-e34e-48de-9794-4bb038b559d1",
+      "name": "logado?"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "d409b922-7a9f-4469-b8bf-03e765c719c3",
+              "name": "isLogin",
+              "value": "ok",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        464,
+        -48
+      ],
+      "id": "26887d25-1820-43b2-8375-ea5e23083799",
+      "name": "sucesso"
+    },
+    {
+      "parameters": {
+        "url": "https://playplus.carpini2023.workers.dev/",
+        "sendQuery": true,
+        "specifyQuery": "json",
+        "jsonQuery": "={\n\n  \"url\": \"https://painel.p2player.top/api/customers?page=1&username={{ $('InformaÃ§Ãµes Globais').item.json.buscaCliente }}&serverId=&packageId=&expiryFrom=&expiryTo=&status=&isTrial=&connections=&perPage=100\",\n\n  \"cookies\": \"\"\n}",
+        "sendHeaders": true,
+        "specifyHeaders": "json",
+        "jsonHeaders": "={\n  \"Authorization\": \"Bearer {{ $('Login QPanel').item.json.body.token }}\",\n  \"Accept\": \"application/json\",\n  \"Content-Type\": \"application/json\",\n  \"User-Agent\": \"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36\"\n}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        672,
+        -48
+      ],
+      "id": "76c4a667-37cb-4dd9-9e70-bcbad951516b",
+      "name": "Busca Cliente QPanel"
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "TesteAtendimento",
+        "options": {
+          "responseCode": {
+            "values": {}
+          }
+        }
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        -1776,
+        0
+      ],
+      "id": "faf2493d-21b3-4e3f-ba4f-0958bf9eab83",
+      "name": "Webhook WhatsApp",
+      "webhookId": "110e6f9a-2ffc-42fa-a6c2-5a878235b0b1"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "d0c81a44-45b4-41d4-a5b5-c2ba3c875d11",
+              "leftValue": "={{ $json.meta.total }}",
+              "rightValue": 0,
+              "operator": {
+                "type": "number",
+                "operation": "notEquals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        864,
+        -48
+      ],
+      "id": "7bbe4116-521f-4cac-a13d-d4fe797b88ee",
+      "name": "If"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "b63f6641-e16a-4619-b77a-9b55a150c18b",
+              "name": "loginCliente",
+              "value": "={{ $json.data[0].username }}",
+              "type": "string"
+            },
+            {
+              "id": "83480a60-b53d-4e55-8469-a50ef6f68e34",
+              "name": "senhaCliente",
+              "value": "={{ $json.data[0].password }}",
+              "type": "string"
+            },
+            {
+              "id": "6eda6c1f-5115-4694-ba29-06ce433e613a",
+              "name": "datavencimentoCliente",
+              "value": "={{ $json.data[0].expires_at_tz.split(\"T\")[0] }}",
+              "type": "string"
+            },
+            {
+              "id": "4742c43d-64ce-4a1f-87be-041f99011555",
+              "name": "isTeste",
+              "value": "={{ $json.data[0].is_trial }}",
+              "type": "string"
+            },
+            {
+              "id": "17ac6912-5346-4a1e-afc4-c988ac8fd0aa",
+              "name": "statusCliente",
+              "value": "={{ $json.data[0].status }}",
+              "type": "string"
+            },
+            {
+              "id": "63195ab3-9152-4a51-a7b7-9f6db6dfd9c7",
+              "name": "horavencimentoCliente",
+              "value": "={{ $json.data[0].expires_at_tz.split(\"T\")[1].split(\".\")[0] }}",
+              "type": "string"
+            },
+            {
+              "id": "6604f177-b2ee-4367-9563-9dc9ff9560d1",
+              "name": "whatsqpanel",
+              "value": "={{ $json.data[0].whatsapp }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        1344,
+        176
+      ],
+      "id": "fe89f4dc-f662-4a16-bd69-e244df92379f",
+      "name": "Edit Fields"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "234bfe82-a2af-47ec-8ea3-b2c1ed255340",
+              "leftValue": "={{ $json.meta.total }}",
+              "rightValue": 1,
+              "operator": {
+                "type": "number",
+                "operation": "gt"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        1120,
+        -64
+      ],
+      "id": "9bd55bdc-f5ec-4178-b26d-b602ff3e4f25",
+      "name": "If1"
+    },
+    {
+      "parameters": {
+        "resource": "messages-api",
+        "instanceName": "={{ $('InformaÃ§Ãµes Globais').item.json.instancia }}",
+        "remoteJid": "={{ $('InformaÃ§Ãµes Globais').item.json.wCliente }}",
+        "messageText": "=OlÃ¡ {{ $('InformaÃ§Ãµes Globais').item.json.nomeCliente }} como posso Ajudar?\nSeu login Ã© {{ $json.loginCliente }}\nSua senha Ã©: {{ $json.senhaCliente }}\nSua Lista Vence: {{ $json.datavencimentoCliente }}",
+        "options_message": {}
+      },
+      "type": "n8n-nodes-evolution-api.evolutionApi",
+      "typeVersion": 1,
+      "position": [
+        1520,
+        176
+      ],
+      "id": "7bd2bc17-6d27-4a4b-8f78-dabca511bfad",
+      "name": "Enviar texto",
+      "credentials": {
+        "evolutionApi": {
+          "id": "4XaXsrdXmENbqQPM",
+          "name": "Evolution account"
+        }
+      },
+      "disabled": true
+    },
+    {
+      "parameters": {
+        "resource": "chat-api",
+        "operation": "read-messages",
+        "instanceName": "={{ $json.body.instance }}",
+        "remoteJid": "={{ $json.body.data.key.remoteJid }}",
+        "messageId": "={{ $json.body.data.key.id }}"
+      },
+      "type": "n8n-nodes-evolution-api.evolutionApi",
+      "typeVersion": 1,
+      "position": [
+        -1008,
+        -32
+      ],
+      "id": "50e92ef2-90c7-4ac9-ae12-3a11c5861767",
+      "name": "Marcar mensagens como lidas",
+      "credentials": {
+        "evolutionApi": {
+          "id": "4XaXsrdXmENbqQPM",
+          "name": "Evolution account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "7656f0d2-e925-480b-8dd5-e547837c7eb5",
+              "leftValue": "={{ $json.body.event }}",
+              "rightValue": "messages.upsert",
+              "operator": {
+                "type": "string",
+                "operation": "equals",
+                "name": "filter.operator.equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        -1568,
+        0
+      ],
+      "id": "4b3f8fdb-e066-4d2c-a479-a4b29f4dda70",
+      "name": "If2"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "a2db8025-4683-4b3b-b7b4-106c6850ab7a",
+              "leftValue": "={{ $json.body.data.key.fromMe }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "false",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        -1296,
+        -16
+      ],
+      "id": "1a9bfb63-1dfe-40ca-b162-0647d06e0803",
+      "name": "If3"
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        -1600,
+        272
+      ],
+      "id": "d974703d-ae93-42f1-b0f6-32b0410f672c",
+      "name": "NÃ£o Ã© msg"
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        -1280,
+        256
+      ],
+      "id": "92c8adf0-f0b5-4bb7-8ef1-b4972be6d5cb",
+      "name": "Eu respondendo"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "2ef73fc9-d833-47dd-9d4c-ff4367ed9f20",
+              "name": "ContactName.SenderName",
+              "value": "={{ $('Webhook WhatsApp').item.json.body.data.pushName }}",
+              "type": "string"
+            },
+            {
+              "id": "875d45c9-e947-4b61-ba74-2d5c3ad5bd77",
+              "name": "ContactName.WhatsappNumber",
+              "value": "={{ $('Webhook WhatsApp').item.json.body.data.key.remoteJidAlt.split(\"@\").first() }}",
+              "type": "string"
+            },
+            {
+              "id": "5e911960-6b96-4b6c-ae11-f820bc4d6725",
+              "name": "ContactName.Instance",
+              "value": "={{ $('Webhook WhatsApp').item.json.body.instance }}",
+              "type": "string"
+            },
+            {
+              "id": "ac54e0f3-8661-48ff-8d4e-0da7641d83a5",
+              "name": "message.id",
+              "value": "={{ $('Webhook WhatsApp').item.json.body.data.key.id }}",
+              "type": "string"
+            },
+            {
+              "id": "8155ecd2-6d5e-41e1-8b4e-f913782ff6bd",
+              "name": "message.type",
+              "value": "={{ !!$('Webhook WhatsApp').item.json.body.data.message.conversation && 'text'|| !!$('Webhook WhatsApp').item.json.body.data.message.audioMessage && 'audio' || !!$('Webhook WhatsApp').item.json.body.data.message.imageMessage && 'image' || !!$('Webhook WhatsApp').item.json.body.data.message.stickerMessage && 'sticker' || !!$('Webhook WhatsApp').item.json.body.data.message.videoMessage && 'video'}}",
+              "type": "string"
+            },
+            {
+              "id": "0a8a46ad-2f46-463c-9564-6cc377895efd",
+              "name": "message.content",
+              "value": "={{ $('Webhook WhatsApp').item.json.body.data.message.conversation }}",
+              "type": "string"
+            },
+            {
+              "id": "846808de-9031-4af7-93f8-16dc949cc6dd",
+              "name": "numero_ADM",
+              "value": "5541997289097",
+              "type": "string"
+            },
+            {
+              "id": "febbc668-bc35-4318-9afa-c74c90a4c9e9",
+              "name": "usuarioID",
+              "value": "1",
+              "type": "string"
+            },
+            {
+              "id": "bf30d134-6978-41f8-a318-a096e3810404",
+              "name": "=message.ReceivedDate",
+              "value": "={{ $('Webhook WhatsApp').item.json.body.date_time }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -704,
+        -880
+      ],
+      "id": "0ed70fb9-94c0-431b-922e-574e9843b28e",
+      "name": "Padroniza"
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $('Padroniza').item.json.message.type }}",
+                    "rightValue": "audio",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "id": "dd51fd04-77da-4bd4-9e08-b7d294ee4ed8"
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "audio"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "id": "0b74f41c-84a7-46e4-93c6-e9baf511d1bc",
+                    "leftValue": "={{ $('Padroniza').item.json.message.type }}",
+                    "rightValue": "image",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals",
+                      "name": "filter.operator.equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "image"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "id": "caf9376f-29bf-42d2-b521-644d5439997a",
+                    "leftValue": "={{ $('Padroniza').item.json.message.type }}",
+                    "rightValue": "sticker",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals",
+                      "name": "filter.operator.equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "sticker"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "id": "7e83234b-380d-44ed-8e76-ac50af2872aa",
+                    "leftValue": "={{ $('Padroniza').item.json.message.type }}",
+                    "rightValue": "video",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals",
+                      "name": "filter.operator.equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "video"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "id": "8f7760d9-6fbd-4912-9053-62d2596e96fa",
+                    "leftValue": "={{ $('Padroniza').item.json.message.type }}",
+                    "rightValue": "text",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals",
+                      "name": "filter.operator.equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "text"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.4,
+      "position": [
+        -464,
+        -928
+      ],
+      "id": "9ef5a59c-5a21-47a0-aa4e-1f1d4dc0d98e",
+      "name": "Direciona"
+    },
+    {
+      "parameters": {
+        "resource": "chat-api",
+        "operation": "get-media-base64",
+        "instanceName": "={{ $('Webhook WhatsApp').item.json.body.instance }}",
+        "messageId": "={{ $('Webhook WhatsApp').item.json.body.data.key.id }}"
+      },
+      "type": "n8n-nodes-evolution-api.evolutionApi",
+      "typeVersion": 1,
+      "position": [
+        -160,
+        -1376
+      ],
+      "id": "2192c67c-5f94-4f3a-8208-d8ea99e683b8",
+      "name": "converte base64",
+      "credentials": {
+        "evolutionApi": {
+          "id": "4XaXsrdXmENbqQPM",
+          "name": "Evolution account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "toBinary",
+        "sourceProperty": "data.base64",
+        "options": {
+          "mimeType": "audio/mpeg"
+        }
+      },
+      "type": "n8n-nodes-base.convertToFile",
+      "typeVersion": 1.1,
+      "position": [
+        48,
+        -1376
+      ],
+      "id": "e4d33009-bd1c-40b5-bb02-8aa9e9b92f9a",
+      "name": "Converte p audio"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.groq.com/openai/v1/audio/transcriptions",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "bearer gsk_REMOVED_FOR_SECURITY_REASONS"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "multipart-form-data",
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "model",
+              "value": "whisper-large-v3-turbo"
+            },
+            {
+              "name": "temperature",
+              "value": "0"
+            },
+            {
+              "name": "response_format",
+              "value": "verbose_json"
+            },
+            {
+              "name": "language",
+              "value": "pt"
+            },
+            {
+              "parameterType": "formBinaryData",
+              "name": "file",
+              "inputDataFieldName": "data"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        256,
+        -1376
+      ],
+      "id": "5f1df205-7a6c-4374-8e2d-4af03814f55a",
+      "name": "Converte p texto (Groq Whisper)"
+    },
+    {
+      "parameters": {
+        "resource": "chat-api",
+        "operation": "get-media-base64",
+        "instanceName": "={{ $('Webhook WhatsApp').item.json.body.instance }}",
+        "messageId": "={{ $('Webhook WhatsApp').item.json.body.data.key.id }}"
+      },
+      "type": "n8n-nodes-evolution-api.evolutionApi",
+      "typeVersion": 1,
+      "position": [
+        -176,
+        -1104
+      ],
+      "id": "c1898f26-158b-41d5-b8d5-845a922fd33b",
+      "name": "converte base",
+      "credentials": {
+        "evolutionApi": {
+          "id": "4XaXsrdXmENbqQPM",
+          "name": "Evolution account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "toBinary",
+        "sourceProperty": "data.base64",
+        "options": {
+          "mimeType": "={{ $json.data.mimetype }}"
+        }
+      },
+      "type": "n8n-nodes-base.convertToFile",
+      "typeVersion": 1.1,
+      "position": [
+        48,
+        -1104
+      ],
+      "id": "bcb668f9-60ba-4d42-9309-ce547df540b6",
+      "name": "Converte p Imagem"
+    },
+    {
+      "parameters": {
+        "resource": "image",
+        "operation": "analyze",
+        "modelId": {
+          "__rl": true,
+          "value": "gpt-4o-mini",
+          "mode": "list",
+          "cachedResultName": "GPT-4O-MINI"
+        },
+        "text": "VocÃª Ã© um agente de analise de imagens, onde sua 2 principais funÃ§Ãµes sÃ£o:\n1.  ExtraÃ§Ã£o de dados de comprovantes Pix (caso comprovante de pagamento).\n2. ExtraÃ§Ã£o de todas as informaÃ§Ãµes relevantes da imagem (caso de foto)\n\nQuando receber uma imagem Pix (como print ou PDF de comprovante), sua tarefa Ã© identificar e extrair os seguintes campos e retornar **somente um objeto JSON vÃ¡lido** com essa estrutura ###SEMPRE, NUNCA ALTERE###:\n\n{\n  \"tipoTransacao\": \"PIX\",\n   \"id_transacao\": \"ID da transaÃ§Ã£o\",\n  \"tipoOperacao\": \"Pix\" | \"Pix Enviado\" | \"Pix Recebido\",\n  \"valor\": \"999,99\",\n  \"recebedor\": {\n    \"nome\": \"Nome completo do recebedor\",\n    \"instituicao\": \"InstituiÃ§Ã£o do recebedor\",\n    \"agencia\": \"0001\",\n    \"conta\": \"000000000-0\"\n  },\n  \"pagador\": {\n    \"nome\": \"Nome completo do pagador\",\n    \"instituicao\": \"InstituiÃ§Ã£o do pagador\",\n    \"agencia\": \"0001\",\n    \"conta\": \"000000000-0\",\n    \"cpf\": \"***.000.000-**\" ou \"â€¢â€¢â€¢.000.000â€¢\",\n    \n  },\n  \"dataHora\": \"dd/mm/aaaa Ã s hh:mm:ss\" ou \"dd MMM yyyy - hh:mm:ss\"\n}\n\nâš ï¸ InstruÃ§Ãµes importantes:\n- O ID da transaÃ§Ã£o Ã© a informaÃ§Ã£o mais importante das imagens pix, e nÃ£o pode haver erros nesse campo.\n- Corrija erros comuns de OCR (como espaÃ§os ou pontuaÃ§Ã£o quebrada).\n- Mantenha o CPF mascarado como estiver na imagem.\n- Se algum campo estiver ausente na imagem, defina o valor como `null`.\n- Sempre padronize o campo `\"tipoTransacao\"` como `\"PIX\"`.\n\nðŸš« Retorne **apenas** o objeto JSON final, sem mensagens, sem arrays, sem aspas ao redor e sem campos como `\"content\"`.\n\nâœ”ï¸ O retorno deve ser diretamente utilizÃ¡vel como JSON real, pronto para ser consumido por um sistema de automaÃ§Ã£o como o n8n.\n\nCaso NÃ£o seja Pix DESCREVA A IMAGEM RECEBIDA:\n\nSE IDENTIFICAR A PALAVRA \"MAC\" CAPTURE O NOME DO APLICATIVO, O MAC E O DEVICE (chave do dispositivo) E REPORTE EM UM JSON, iniciando a mensagem com: Imagem Recebida: OBJECT COM AS INFORMAÃ‡Ã•ES: \n{\n  \"nome\": \"Nome de App\",\n  \"mac_address\" : \"mac\";\n  \"device_key\" : \"device\";\n}\n### SOMENTE SE NÃƒO FOR PIX ###, SE FOR MANTENHA O PADÃƒO DEFINIDO; \n\nSE IDENTIFICAR UMA TV, DESCREVA DETALHADAMENTE TUDO QUE ESTÃ NA TELA DA TV, MESAGENS DE ERRO EM INGLÃŠS DEVE SER TRADUZIDAS PARA O PORTUGUÃŠS;\nSOMENTE SE NÃƒO FOR PIX ###, SE FOR MANTENHA O PADÃƒO DEFINIDO; \n\nSE IDENTIFICAR UMA TELAS DE LOGIN , CAPTURE OS DADOS EXEMPLO: ID/SERVER, USERNAME, PASSWORD, APLICATIVO;\nSOMENTE SE NÃƒO FOR PIX ###, SE FOR MANTENHA O PADÃƒO DEFINIDO; \n\nSE IDENIFICAR QUALQUER OUTRA IMAGEM DESCREVA A IMAGEM DE FORMA QUE UM AGENTE DE IA CONSIGA ENTENDER PLENAMENTE",
+        "inputType": "base64",
+        "options": {
+          "detail": "auto"
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.openAi",
+      "typeVersion": 2.3,
+      "position": [
+        256,
+        -1104
+      ],
+      "id": "0f0cf182-d4d4-4912-b99f-70d0af96a72c",
+      "name": "Analisa Imagem",
+      "credentials": {
+        "openAiApi": {
+          "id": "3Ic8P2ik6bEJn29v",
+          "name": "OpenAI account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "596e2cf5-3976-4d18-8215-230340b1c5c8",
+              "leftValue": "={{ $json['0'].content[0].text }}",
+              "rightValue": "PIX",
+              "operator": {
+                "type": "string",
+                "operation": "contains"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        464,
+        -1104
+      ],
+      "id": "bfff6d9c-ba20-427c-a5a9-196fb912fa89",
+      "name": "Se Ã© Pix?"
+    },
+    {
+      "parameters": {
+        "jsCode": "// A IA retornou um array com um objeto, e o JSON estÃ¡ como string no campo \"content\"\nconst rawJson = $input.first().json['0'].content[0].text;\n\n// Transformamos a string em objeto real\nconst dados = JSON.parse(rawJson);\n\n// Retornamos o objeto real no formato correto para uso no fluxo\nreturn [{ json: dados }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        576,
+        -1856
+      ],
+      "id": "fac9037a-5311-4187-b760-ef186da5b88d",
+      "name": "Trata Recibo"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "2533ec7d-f41d-421f-bbb0-ab66a7f2e7b9",
+              "name": "ContactName.SenderName",
+              "value": "={{ $('Padroniza').item.json.ContactName.SenderName }}",
+              "type": "string"
+            },
+            {
+              "id": "38519256-4198-4980-89e7-97671047b6cf",
+              "name": "ContactName.WhatsappNumber",
+              "value": "={{ $('Padroniza').item.json.ContactName.WhatsappNumber }}",
+              "type": "string"
+            },
+            {
+              "id": "57147b40-41df-46e0-bb44-fff6cb584aa8",
+              "name": "ContactName.Instance",
+              "value": "={{ $('Webhook WhatsApp').item.json.body.instance }}",
+              "type": "string"
+            },
+            {
+              "id": "77c64804-e8d8-43f4-b770-e334b4eb6517",
+              "name": "message.content",
+              "value": "={{ $('Analisa Imagem').item.json['0'].content[0].text }}",
+              "type": "string"
+            },
+            {
+              "id": "e8c44ef6-e387-41f7-b9fa-b26104e5ca7b",
+              "name": "message.type",
+              "value": "={{ $('Padroniza').item.json.message.type }}",
+              "type": "string"
+            },
+            {
+              "id": "978d11f8-846f-434c-81b0-b3b4a2511c5b",
+              "name": "message.id",
+              "value": "={{ $('Padroniza').item.json.message.id }}",
+              "type": "string"
+            },
+            {
+              "id": "dd7e770e-eb9f-4ecf-b0cd-42402154ef1a",
+              "name": "message.ReceivedDate",
+              "value": "={{ $('Padroniza').item.json.message.ReceivedDate }}",
+              "type": "string"
+            },
+            {
+              "id": "7ed0a3f6-7d0a-48fc-86ab-ac379ef9edc9",
+              "name": "tipoTransacao",
+              "value": "={{ $json.tipoTransacao }}",
+              "type": "string"
+            },
+            {
+              "id": "73edf345-7265-475d-9d6b-156a972b9f94",
+              "name": "valorRecebido",
+              "value": "={{ $json.valor }}",
+              "type": "string"
+            },
+            {
+              "id": "221eb988-84b7-4b5f-a1f1-7c50b553fbc3",
+              "name": "Pagador",
+              "value": "={{ $json.pagador.nome }}",
+              "type": "string"
+            },
+            {
+              "id": "2b0b4b9d-e59d-47c7-a426-00488461d4be",
+              "name": "Recebedor",
+              "value": "={{ $json.recebedor.nome }}",
+              "type": "string"
+            },
+            {
+              "id": "51b168f1-3f29-4bd0-a8c5-8540a30dc05b",
+              "name": "Banco",
+              "value": "={{ $json.recebedor.instituicao}} ",
+              "type": "string"
+            },
+            {
+              "id": "4ed6e132-061b-4d01-837b-754e06d87012",
+              "name": "idtransacao",
+              "value": "={{ $json.id_transacao }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        784,
+        -1856
+      ],
+      "id": "9ae6ad8b-a989-4bb6-8533-cd6585f2c401",
+      "name": "Resultado Do Recibo"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "ebcbccf3-d8c6-4d8f-8adc-f3bf3b7d8c3a",
+              "leftValue": "={{ $('Trata Recibo').item.json.tipoTransacao }}",
+              "rightValue": "PIX",
+              "operator": {
+                "type": "string",
+                "operation": "equals",
+                "name": "filter.operator.equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        992,
+        -1856
+      ],
+      "id": "a2ef1b8a-3b43-4392-81db-c8d8cc40d6a7",
+      "name": "Verifica se ta tudo certo"
+    },
+    {
+      "parameters": {
+        "url": "={{ $('Webhook WhatsApp').item.json.body.data.message.imageMessage.url }}",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "file"
+            }
+          }
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        1408,
+        -1952
+      ],
+      "id": "dabbeefe-16ea-476d-8bf0-b2550852687e",
+      "name": "BaixarImagem"
+    },
+    {
+      "parameters": {
+        "resource": "messages-api",
+        "instanceName": "={{ $json.ContactName.Instance }}",
+        "remoteJid": "5521990579551",
+        "messageText": "=*PIX RECEBIDO* \n\n*Pagador:* {{ $json.Pagador }} \n\n*Valor:* {{ $json.valorRecebido }} \n\n*Em Nome de:* {{ $json.Recebedor }} \n\n*Banco:* {{ $json.Banco }}",
+        "options_message": {}
+      },
+      "type": "n8n-nodes-evolution-api.evolutionApi",
+      "typeVersion": 1,
+      "position": [
+        1200,
+        -1952
+      ],
+      "id": "3907a527-6d50-4d3e-8e09-d8cdff1c2427",
+      "name": "Envia Para Admin",
+      "credentials": {
+        "evolutionApi": {
+          "id": "4XaXsrdXmENbqQPM",
+          "name": "Evolution account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "resource": "messages-api",
+        "operation": "send-image",
+        "instanceName": "={{ $('Padroniza').item.json.ContactName.Instance }}",
+        "remoteJid": "5521990579551",
+        "media": "={{ $('converte base').item.json.data.base64 }}",
+        "caption": "Recibo",
+        "options_message": {}
+      },
+      "type": "n8n-nodes-evolution-api.evolutionApi",
+      "typeVersion": 1,
+      "position": [
+        1616,
+        -1952
+      ],
+      "id": "457bf453-718f-457e-92ab-4d5c62d12cd4",
+      "name": "Enviar imagem",
+      "credentials": {
+        "evolutionApi": {
+          "id": "4XaXsrdXmENbqQPM",
+          "name": "Evolution account"
+        }
+      }
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        2128,
+        -1072
+      ],
+      "id": "20dd78b8-de30-4be0-ac4c-8c64908342bf",
+      "name": "Merge"
+    },
+    {
+      "parameters": {
+        "resource": "chat-api",
+        "operation": "get-media-base64",
+        "instanceName": "={{ $('Webhook WhatsApp').item.json.body.instance }}",
+        "messageId": "={{ $('Webhook WhatsApp').item.json.body.data.key.id }}"
+      },
+      "type": "n8n-nodes-evolution-api.evolutionApi",
+      "typeVersion": 1,
+      "position": [
+        -176,
+        -880
+      ],
+      "id": "3b4ee269-b1db-48c1-93dc-9628de42f2f2",
+      "name": "converte base1",
+      "credentials": {
+        "evolutionApi": {
+          "id": "4XaXsrdXmENbqQPM",
+          "name": "Evolution account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "toBinary",
+        "sourceProperty": "data.base64",
+        "options": {
+          "mimeType": "={{ $json.data.mimetype }}"
+        }
+      },
+      "type": "n8n-nodes-base.convertToFile",
+      "typeVersion": 1.1,
+      "position": [
+        48,
+        -880
+      ],
+      "id": "0914aecd-94e6-49ce-a51b-de915a03e13d",
+      "name": "Converte p Sticker"
+    },
+    {
+      "parameters": {
+        "resource": "image",
+        "operation": "analyze",
+        "modelId": {
+          "__rl": true,
+          "value": "gpt-4o-mini",
+          "mode": "list",
+          "cachedResultName": "GPT-4O-MINI"
+        },
+        "text": "VocÃª Ã© especialista em analise de imagem, descreva a imagem. ###IMPORTANTE### Use apenas letras, NUNCA use caracteres especiais  como: \" \"(aspas duplas), ' '(aspas simples), /, \\, entre outros. sempre comece com: Recebeu uma Figurinha: ",
+        "inputType": "base64",
+        "options": {
+          "detail": "auto"
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.openAi",
+      "typeVersion": 2.3,
+      "position": [
+        256,
+        -880
+      ],
+      "id": "85131db1-a99b-4210-b222-f61be229b9bb",
+      "name": "Analyze Sticker",
+      "credentials": {
+        "openAiApi": {
+          "id": "3Ic8P2ik6bEJn29v",
+          "name": "OpenAI account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "4da79154-ddd2-4a06-a1fb-f53e8f7a8b20",
+              "name": "message.content",
+              "value": "={{ $('Converte p texto (Groq Whisper)').item.json.segments[0].text }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        1600,
+        -1376
+      ],
+      "id": "3e8168eb-f815-4b3e-bc1b-cd18458120a9",
+      "name": "Resultado do Audio"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "8679e673-47b9-4f86-8a70-b085242d3a09",
+              "name": "ContactName.SenderName",
+              "value": "={{ $('Padroniza').item.json.ContactName.SenderName }}",
+              "type": "string"
+            },
+            {
+              "id": "5a5e9da4-0d66-46dd-beb2-f8bc9325b09e",
+              "name": "ContactName.WhatsappNumber",
+              "value": "={{ $('Padroniza').item.json.ContactName.WhatsappNumber }}",
+              "type": "string"
+            },
+            {
+              "id": "7cc7cd31-bf81-4887-be6b-b0b5f0d829d3",
+              "name": "ContactName.Instance",
+              "value": "={{ $('Webhook WhatsApp').item.json.body.instance }}",
+              "type": "string"
+            },
+            {
+              "id": "2f7ca677-f367-4c4c-bfce-412dc0642d94",
+              "name": "message.content",
+              "value": "={{ $('Padroniza').item.json.ContactName.SenderName }} Envio um pagamento Via Pix",
+              "type": "string"
+            },
+            {
+              "id": "302b7027-b8d7-4416-95ab-d26ea44b627e",
+              "name": "=message.type",
+              "value": "={{ $('Padroniza').item.json.message.type }}",
+              "type": "string"
+            },
+            {
+              "id": "ad159248-391d-4894-b8a2-640c39d3225b",
+              "name": "message.id",
+              "value": "={{ $('Padroniza').item.json.message.id }}",
+              "type": "string"
+            },
+            {
+              "id": "5abd09cc-8404-4ab5-b886-a163ce421b1d",
+              "name": "comprovante",
+              "value": "={{ $('converte base').item.json.data.base64 }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        1600,
+        -1088
+      ],
+      "id": "372269f4-b8ad-456e-8d4e-3d69224e9892",
+      "name": "Resultado da Imagem"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "8679e673-47b9-4f86-8a70-b085242d3a09",
+              "name": "ContactName.SenderName",
+              "value": "={{ $('Padroniza').item.json.ContactName.SenderName }}",
+              "type": "string"
+            },
+            {
+              "id": "5a5e9da4-0d66-46dd-beb2-f8bc9325b09e",
+              "name": "ContactName.WhatsappNumber",
+              "value": "={{ $('Padroniza').item.json.ContactName.WhatsappNumber }}",
+              "type": "string"
+            },
+            {
+              "id": "7cc7cd31-bf81-4887-be6b-b0b5f0d829d3",
+              "name": "ContactName.Instance",
+              "value": "={{ $('Webhook WhatsApp').item.json.body.instance }}",
+              "type": "string"
+            },
+            {
+              "id": "2f7ca677-f367-4c4c-bfce-412dc0642d94",
+              "name": "message.content",
+              "value": "={{ $json['0'].content[0].text }}",
+              "type": "string"
+            },
+            {
+              "id": "302b7027-b8d7-4416-95ab-d26ea44b627e",
+              "name": "=message.type",
+              "value": "={{ $('Padroniza').item.json.message.type }}",
+              "type": "string"
+            },
+            {
+              "id": "ad159248-391d-4894-b8a2-640c39d3225b",
+              "name": "message.id",
+              "value": "={{ $('Padroniza').item.json.message.id }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        1600,
+        -880
+      ],
+      "id": "f13108cc-43d1-49ad-a3a6-49320e84fc99",
+      "name": "Resultado da Figurinha"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "8679e673-47b9-4f86-8a70-b085242d3a09",
+              "name": "ContactName.SenderName",
+              "value": "={{ $('Padroniza').item.json.ContactName.SenderName }}",
+              "type": "string"
+            },
+            {
+              "id": "5a5e9da4-0d66-46dd-beb2-f8bc9325b09e",
+              "name": "ContactName.WhatsappNumber",
+              "value": "={{ $('Padroniza').item.json.ContactName.WhatsappNumber }}",
+              "type": "string"
+            },
+            {
+              "id": "7cc7cd31-bf81-4887-be6b-b0b5f0d829d3",
+              "name": "ContactName.Instance",
+              "value": "={{ $('Webhook WhatsApp').item.json.body.instance }}",
+              "type": "string"
+            },
+            {
+              "id": "2f7ca677-f367-4c4c-bfce-412dc0642d94",
+              "name": "message.content",
+              "value": "={{ $('Padroniza').item.json.ContactName.SenderName }} Envio um pagamento Via Pix",
+              "type": "string"
+            },
+            {
+              "id": "302b7027-b8d7-4416-95ab-d26ea44b627e",
+              "name": "=message.type",
+              "value": "={{ $json.data.messageType }}",
+              "type": "string"
+            },
+            {
+              "id": "ad159248-391d-4894-b8a2-640c39d3225b",
+              "name": "message.id",
+              "value": "={{ $('Padroniza').item.json.message.id }}",
+              "type": "string"
+            },
+            {
+              "id": "5abd09cc-8404-4ab5-b886-a163ce421b1d",
+              "name": "comprovante",
+              "value": "={{ $('converte base').item.json.data.base64 }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        1824,
+        -1952
+      ],
+      "id": "66d6cb5b-4186-4a91-bc11-36595bece2de",
+      "name": "Resultado do Comprovante"
+    },
+    {
+      "parameters": {
+        "resource": "chat-api",
+        "operation": "get-media-base64",
+        "instanceName": "={{ $('Webhook WhatsApp').item.json.body.instance }}",
+        "messageId": "={{ $('Webhook WhatsApp').item.json.body.data.key.id }}"
+      },
+      "type": "n8n-nodes-evolution-api.evolutionApi",
+      "typeVersion": 1,
+      "position": [
+        -176,
+        -672
+      ],
+      "id": "8b192e4b-9a8b-4fa1-a26a-bdc76f3f6017",
+      "name": "converte base2",
+      "credentials": {
+        "evolutionApi": {
+          "id": "4XaXsrdXmENbqQPM",
+          "name": "Evolution account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "toBinary",
+        "sourceProperty": "data.base64",
+        "options": {
+          "mimeType": "={{ $json.data.mimetype }}"
+        }
+      },
+      "type": "n8n-nodes-base.convertToFile",
+      "typeVersion": 1.1,
+      "position": [
+        48,
+        -672
+      ],
+      "id": "21abb0dd-05ee-45e9-a371-f57a3acadfeb",
+      "name": "Converte p Sticker1"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.groq.com/openai/v1/audio/transcriptions",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "bearer gsk_REMOVED_FOR_SECURITY_REASONS"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "multipart-form-data",
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "model",
+              "value": "whisper-large-v3-turbo"
+            },
+            {
+              "name": "temperature",
+              "value": "0"
+            },
+            {
+              "name": "response_format",
+              "value": "verbose_json"
+            },
+            {
+              "name": "language",
+              "value": "pt"
+            },
+            {
+              "parameterType": "formBinaryData",
+              "name": "file",
+              "inputDataFieldName": "data"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        256,
+        -672
+      ],
+      "id": "52ef0815-580f-4861-a308-0bb9d1df3979",
+      "name": "Converte p texto (Groq Whisper)1"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "8679e673-47b9-4f86-8a70-b085242d3a09",
+              "name": "ContactName.SenderName",
+              "value": "={{ $('Padroniza').item.json.ContactName.SenderName }}",
+              "type": "string"
+            },
+            {
+              "id": "5a5e9da4-0d66-46dd-beb2-f8bc9325b09e",
+              "name": "ContactName.WhatsappNumber",
+              "value": "={{ $('Padroniza').item.json.ContactName.WhatsappNumber }}",
+              "type": "string"
+            },
+            {
+              "id": "7cc7cd31-bf81-4887-be6b-b0b5f0d829d3",
+              "name": "ContactName.Instance",
+              "value": "={{ $('Webhook WhatsApp').item.json.body.instance }}",
+              "type": "string"
+            },
+            {
+              "id": "2f7ca677-f367-4c4c-bfce-412dc0642d94",
+              "name": "message.content",
+              "value": "={{ $json.text }}",
+              "type": "string"
+            },
+            {
+              "id": "302b7027-b8d7-4416-95ab-d26ea44b627e",
+              "name": "=message.type",
+              "value": "={{ $('Padroniza').item.json.message.type }}",
+              "type": "string"
+            },
+            {
+              "id": "ad159248-391d-4894-b8a2-640c39d3225b",
+              "name": "message.id",
+              "value": "={{ $('Padroniza').item.json.message.id }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        1600,
+        -672
+      ],
+      "id": "eb96dc53-43ae-4152-860b-ab41616f083e",
+      "name": "Resultado do Video"
+    },
+    {
+      "parameters": {
+        "amount": 10
+      },
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        240,
+        -384
+      ],
+      "id": "e03fa513-9dcb-4d41-82d1-63f246a785e8",
+      "name": "Wait1",
+      "webhookId": "ab7a1eb0-7de6-45c8-abc4-289fde53ed57"
+    },
+    {
+      "parameters": {
+        "operation": "push",
+        "list": "=buffer:{{ $('Padroniza').item.json.ContactName.WhatsappNumber }}",
+        "messageData": "={{ $json.message.content }}"
+      },
+      "type": "n8n-nodes-base.redis",
+      "typeVersion": 1,
+      "position": [
+        32,
+        -384
+      ],
+      "id": "d2387a6e-9858-4986-8167-a9f3e9f2d2f1",
+      "name": "LISTA-MSGS",
+      "credentials": {
+        "redis": {
+          "id": "NL29AbTKA48QDJ6I",
+          "name": "Redis account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "506e12ce-e702-43db-8dbd-2bdb9f2be8ed",
+              "name": "message.content",
+              "value": "={{ $('Webhook WhatsApp').item.json.body.data.message?.conversation }}",
+              "type": "string"
+            },
+            {
+              "id": "e0f054fe-3cb4-4432-bb0b-2483d0c66dd8",
+              "name": "ContactName.instanceName",
+              "value": "={{ $('Webhook WhatsApp').item.json.body.instance }}",
+              "type": "string"
+            }
+          ]
+        },
+        "includeOtherFields": true,
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -176,
+        -384
+      ],
+      "id": "112b6a71-d005-43a1-befa-e1941236df4d",
+      "name": "Text Message"
+    },
+    {
+      "parameters": {
+        "operation": "get",
+        "propertyName": "message.content",
+        "key": "=buffer:{{ $('Padroniza').item.json.ContactName.WhatsappNumber }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.redis",
+      "typeVersion": 1,
+      "position": [
+        448,
+        -384
+      ],
+      "id": "460bb50f-6e5e-481c-bf04-724175395826",
+      "name": "PUXA-MSGS",
+      "credentials": {
+        "redis": {
+          "id": "NL29AbTKA48QDJ6I",
+          "name": "Redis account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "a1f97d40-6ec7-4c13-a7f8-1df3fd6a516d",
+              "leftValue": "={{ (() => { const v = $json.value || $json.message.content; return Array.isArray(v) ? v[v.length - 1] : v; })() }}",
+              "rightValue": "={{ $('Text Message').item.json.message.content }}",
+              "operator": {
+                "type": "string",
+                "operation": "equals",
+                "name": "filter.operator.equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        656,
+        -384
+      ],
+      "id": "f141d01c-7b87-40c8-9249-b89d584ef4d9",
+      "name": "If4"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "a1cfcbe3-3651-410a-bda7-780bdbc58bbb",
+              "name": "message.content",
+              "value": "={{ (() => { const v = $('PUXA-MSGS').item.json.value || $('PUXA-MSGS').item.json.message.content; return Array.isArray(v) ? [...v].reverse().join('\\n') : v; })() }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        864,
+        -480
+      ],
+      "id": "b88062d6-f241-4021-b7be-0dda54a4e0b2",
+      "name": "JUNTA-MSGS"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "0964de73-bb53-4fa0-a7c4-bafc798624f0",
+              "name": "message.content",
+              "value": "={{ (() => { const v = $json.message.content; return typeof v === 'string' ? v.split('\\n').join(',') : (Array.isArray(v) ? v.join(',') : v); })() }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        1072,
+        -480
+      ],
+      "id": "4214f70c-fc5b-456e-9bee-13c989a7c6cb",
+      "name": "trocaArray"
+    },
+    {
+      "parameters": {
+        "operation": "delete",
+        "key": "=buffer:{{ $('LISTA-MSGS').item.json.ContactName.WhatsappNumber }}"
+      },
+      "type": "n8n-nodes-base.redis",
+      "typeVersion": 1,
+      "position": [
+        1280,
+        -480
+      ],
+      "id": "f0188fa4-f2c8-4a93-8916-c3938e8d8fe7",
+      "name": "Redis",
+      "credentials": {
+        "redis": {
+          "id": "NL29AbTKA48QDJ6I",
+          "name": "Redis account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "8679e673-47b9-4f86-8a70-b085242d3a09",
+              "name": "ContactName.SenderName",
+              "value": "={{ $('Padroniza').item.json.ContactName.SenderName }}",
+              "type": "string"
+            },
+            {
+              "id": "5a5e9da4-0d66-46dd-beb2-f8bc9325b09e",
+              "name": "ContactName.WhatsappNumber",
+              "value": "={{ $('Padroniza').item.json.ContactName.WhatsappNumber }}",
+              "type": "string"
+            },
+            {
+              "id": "7cc7cd31-bf81-4887-be6b-b0b5f0d829d3",
+              "name": "ContactName.Instance",
+              "value": "={{ $('Webhook WhatsApp').item.json.body.instance }}",
+              "type": "string"
+            },
+            {
+              "id": "2f7ca677-f367-4c4c-bfce-412dc0642d94",
+              "name": "message.content",
+              "value": "={{ $json.message.content }}",
+              "type": "string"
+            },
+            {
+              "id": "302b7027-b8d7-4416-95ab-d26ea44b627e",
+              "name": "=message.type",
+              "value": "={{ $('Padroniza').item.json.message.type }}",
+              "type": "string"
+            },
+            {
+              "id": "ad159248-391d-4894-b8a2-640c39d3225b",
+              "name": "message.id",
+              "value": "={{ $('Padroniza').item.json.message.id }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        1600,
+        -480
+      ],
+      "id": "458ba485-8256-4e9d-987a-52f1c7ba3cb3",
+      "name": "Resultado Texto"
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        864,
+        -288
+      ],
+      "id": "8b653413-fae1-4459-aede-dd035d9c0d6b",
+      "name": "No Operation, do nothing"
+    },
+    {
+      "parameters": {
+        "tableId": "whatsapp_messages",
+        "fieldsUi": {
+          "fieldValues": [
+            {
+              "fieldId": "usuarioID",
+              "fieldValue": "={{ $('Padroniza').item.json.usuarioID }}"
+            },
+            {
+              "fieldId": "WhatsappNumber",
+              "fieldValue": "={{ $json.ContactName.WhatsappNumber }}"
+            },
+            {
+              "fieldId": "WhatsappNome",
+              "fieldValue": "={{ $('Padroniza').item.json.ContactName.SenderName }}"
+            },
+            {
+              "fieldId": "mensagem",
+              "fieldValue": "={{ $json.message.content }}"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        2336,
+        -1072
+      ],
+      "id": "b95d1294-f5af-4db1-add8-ad9ca1d68d88",
+      "name": "Create a row",
+      "credentials": {
+        "supabaseApi": {
+          "id": "6EsmgRRSfl2t56Bu",
+          "name": "Supabase account"
+        }
+      }
+    }
+  ],
+  "pinData": {
+    "Webhook WhatsApp": [
+      {
+        "json": {
+          "headers": {
+            "accept": "application/json, text/plain, */*",
+            "content-type": "application/json",
+            "user-agent": "axios/1.13.2",
+            "content-length": "1442",
+            "accept-encoding": "gzip, compress, deflate, br",
+            "host": "178.238.236.103:5678",
+            "connection": "keep-alive"
+          },
+          "params": {},
+          "query": {},
+          "body": {
+            "event": "messages.upsert",
+            "instance": "CamilaTake",
+            "data": {
+              "key": {
+                "remoteJid": "5521990579551@s.whatsapp.net",
+                "remoteJidAlt": "5521990579551@s.whatsapp.net",
+                "fromMe": false,
+                "id": "AC8CE63732D0984A38A75FF7800E36FF",
+                "participant": "",
+                "addressingMode": "lid"
+              },
+              "pushName": "Carpini",
+              "status": "DELIVERY_ACK",
+              "message": {
+                "conversation": "Oi tudo bem",
+                "messageContextInfo": {
+                  "threadId": [],
+                  "deviceListMetadata": {
+                    "senderKeyIndexes": [],
+                    "recipientKeyIndexes": [],
+                    "senderKeyHash": {
+                      "0": 233,
+                      "1": 109,
+                      "2": 12,
+                      "3": 128,
+                      "4": 58,
+                      "5": 247,
+                      "6": 124,
+                      "7": 134,
+                      "8": 189,
+                      "9": 218
+                    },
+                    "senderTimestamp": {
+                      "low": 1778515300,
+                      "high": 0,
+                      "unsigned": true
+                    },
+                    "recipientKeyHash": {
+                      "0": 107,
+                      "1": 46,
+                      "2": 59,
+                      "3": 72,
+                      "4": 69,
+                      "5": 43,
+                      "6": 230,
+                      "7": 209,
+                      "8": 118,
+                      "9": 2
+                    },
+                    "recipientTimestamp": {
+                      "low": 1778332103,
+                      "high": 0,
+                      "unsigned": true
+                    }
+                  },
+                  "deviceListMetadataVersion": 2,
+                  "messageSecret": {
+                    "0": 177,
+                    "1": 59,
+                    "2": 148,
+                    "3": 132,
+                    "4": 20,
+                    "5": 43,
+                    "6": 182,
+                    "7": 0,
+                    "8": 110,
+                    "9": 180,
+                    "10": 25,
+                    "11": 210,
+                    "12": 118,
+                    "13": 21,
+                    "14": 103,
+                    "15": 229,
+                    "16": 62,
+                    "17": 110,
+                    "18": 167,
+                    "19": 129,
+                    "20": 71,
+                    "21": 252,
+                    "22": 87,
+                    "23": 131,
+                    "24": 231,
+                    "25": 20,
+                    "26": 86,
+                    "27": 156,
+                    "28": 255,
+                    "29": 185,
+                    "30": 128,
+                    "31": 83
+                  }
+                }
+              },
+              "messageType": "conversation",
+              "messageTimestamp": 1778519201,
+              "instanceId": "8b0ae2a0-39fa-4fff-90e1-1f0732dd8e75",
+              "source": "android"
+            },
+            "destination": "http://178.238.236.103:5678/webhook/TesteAtendimento",
+            "date_time": "2026-05-11T14:06:41.925Z",
+            "sender": "553284874521@s.whatsapp.net",
+            "server_url": "http://178.238.236.103:8080",
+            "apikey": "2CBC5128DC16-48BA-AA11-7E750CBECA29"
+          },
+          "webhookUrl": "http://178.238.236.103:5678/webhook/TesteAtendimento",
+          "executionMode": "production"
+        },
+        "pairedItem": {
+          "item": 0
+        }
+      }
+    ]
+  },
+  "connections": {
+    "InformaÃ§Ãµes Globais": {
+      "main": [
+        [
+          {
+            "node": "Login QPanel",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Login QPanel": {
+      "main": [
+        [
+          {
+            "node": "logado?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait": {
+      "main": [
+        [
+          {
+            "node": "InformaÃ§Ãµes Globais",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "logado?": {
+      "main": [
+        [
+          {
+            "node": "sucesso",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Wait",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "sucesso": {
+      "main": [
+        [
+          {
+            "node": "Busca Cliente QPanel",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Webhook WhatsApp": {
+      "main": [
+        [
+          {
+            "node": "If2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Busca Cliente QPanel": {
+      "main": [
+        [
+          {
+            "node": "If",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If": {
+      "main": [
+        [
+          {
+            "node": "If1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If1": {
+      "main": [
+        [],
+        [
+          {
+            "node": "Edit Fields",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Edit Fields": {
+      "main": [
+        [
+          {
+            "node": "Enviar texto",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Marcar mensagens como lidas": {
+      "main": [
+        [
+          {
+            "node": "InformaÃ§Ãµes Globais",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Padroniza",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If2": {
+      "main": [
+        [
+          {
+            "node": "If3",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "NÃ£o Ã© msg",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If3": {
+      "main": [
+        [
+          {
+            "node": "Marcar mensagens como lidas",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Eu respondendo",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Padroniza": {
+      "main": [
+        [
+          {
+            "node": "Direciona",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Direciona": {
+      "main": [
+        [
+          {
+            "node": "converte base64",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "converte base",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "converte base1",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "converte base2",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Text Message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "converte base64": {
+      "main": [
+        [
+          {
+            "node": "Converte p audio",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Converte p audio": {
+      "main": [
+        [
+          {
+            "node": "Converte p texto (Groq Whisper)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Converte p texto (Groq Whisper)": {
+      "main": [
+        [
+          {
+            "node": "Resultado do Audio",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "converte base": {
+      "main": [
+        [
+          {
+            "node": "Converte p Imagem",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Converte p Imagem": {
+      "main": [
+        [
+          {
+            "node": "Analisa Imagem",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Analisa Imagem": {
+      "main": [
+        [
+          {
+            "node": "Se Ã© Pix?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Se Ã© Pix?": {
+      "main": [
+        [
+          {
+            "node": "Trata Recibo",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Resultado da Imagem",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Trata Recibo": {
+      "main": [
+        [
+          {
+            "node": "Resultado Do Recibo",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Resultado Do Recibo": {
+      "main": [
+        [
+          {
+            "node": "Verifica se ta tudo certo",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Verifica se ta tudo certo": {
+      "main": [
+        [
+          {
+            "node": "Envia Para Admin",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Merge",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Envia Para Admin": {
+      "main": [
+        [
+          {
+            "node": "BaixarImagem",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "BaixarImagem": {
+      "main": [
+        [
+          {
+            "node": "Enviar imagem",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Enviar imagem": {
+      "main": [
+        [
+          {
+            "node": "Resultado do Comprovante",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "converte base1": {
+      "main": [
+        [
+          {
+            "node": "Converte p Sticker",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Converte p Sticker": {
+      "main": [
+        [
+          {
+            "node": "Analyze Sticker",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Resultado do Audio": {
+      "main": [
+        [
+          {
+            "node": "Merge",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Resultado da Imagem": {
+      "main": [
+        [
+          {
+            "node": "Merge",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Analyze Sticker": {
+      "main": [
+        [
+          {
+            "node": "Resultado da Figurinha",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Resultado do Comprovante": {
+      "main": [
+        [
+          {
+            "node": "Merge",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Resultado da Figurinha": {
+      "main": [
+        [
+          {
+            "node": "Merge",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "converte base2": {
+      "main": [
+        [
+          {
+            "node": "Converte p Sticker1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Converte p Sticker1": {
+      "main": [
+        [
+          {
+            "node": "Converte p texto (Groq Whisper)1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Converte p texto (Groq Whisper)1": {
+      "main": [
+        [
+          {
+            "node": "Resultado do Video",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Resultado do Video": {
+      "main": [
+        [
+          {
+            "node": "Merge",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "LISTA-MSGS": {
+      "main": [
+        [
+          {
+            "node": "Wait1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Text Message": {
+      "main": [
+        [
+          {
+            "node": "LISTA-MSGS",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait1": {
+      "main": [
+        [
+          {
+            "node": "PUXA-MSGS",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "PUXA-MSGS": {
+      "main": [
+        [
+          {
+            "node": "If4",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If4": {
+      "main": [
+        [
+          {
+            "node": "JUNTA-MSGS",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "No Operation, do nothing",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "JUNTA-MSGS": {
+      "main": [
+        [
+          {
+            "node": "trocaArray",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "trocaArray": {
+      "main": [
+        [
+          {
+            "node": "Redis",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Redis": {
+      "main": [
+        [
+          {
+            "node": "Resultado Texto",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Resultado Texto": {
+      "main": [
+        [
+          {
+            "node": "Merge",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge": {
+      "main": [
+        [
+          {
+            "node": "Create a row",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "versionId": "7a53aa69-ad04-4ef9-a5ed-ce75ac95c143",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "320076865dbf27c82db3d08be185c4f00ba63866d2a3e9c20b11fdd06f4b1d51"
+  },
+  "id": "OFIVAdTnI13GiGY9",
+  "tags": []
+}
